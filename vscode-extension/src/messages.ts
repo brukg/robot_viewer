@@ -9,6 +9,7 @@ export interface LoadFileMessage {
   filename: string;
   uri: string;
   fileType: 'urdf' | 'mjcf' | 'usd';
+  isBinary?: boolean; // true for binary USD files (.usd, .usdc, .usdz)
 }
 
 export interface MeshDataMessage {

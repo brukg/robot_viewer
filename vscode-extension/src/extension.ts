@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { RobotEditorProvider } from './RobotEditorProvider';
 import { RobotPreviewProvider } from './RobotPreviewProvider';
+import { UsdBinaryEditorProvider } from './UsdBinaryEditorProvider';
 
 let previewProvider: RobotPreviewProvider | undefined;
 
@@ -10,7 +11,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Register custom editor providers
   const urdfEditorProvider = new RobotEditorProvider(context, 'urdf');
   const mjcfEditorProvider = new RobotEditorProvider(context, 'mjcf');
-  const usdEditorProvider = new RobotEditorProvider(context, 'usd');
+  const usdEditorProvider = new UsdBinaryEditorProvider(context); // For all USD formats
 
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
@@ -38,6 +39,7 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
+  // Register USD editor for all USD formats (uses binary-safe provider)
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
       'robotViewer.usdEditor',
@@ -46,7 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
         webviewOptions: {
           retainContextWhenHidden: true,
         },
-        supportsMultipleEditorsPerDocument: false,
+        supportsMultipleEditorsPerDocument: true,
       }
     )
   );

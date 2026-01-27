@@ -61,10 +61,10 @@
         "displayName": "Robot Viewer (USD)",
         "selector": [
           {
-            "filenamePattern": "*.usd"
+            "filenamePattern": "*.usda"
           },
           {
-            "filenamePattern": "*.usda"
+            "filenamePattern": "*.usd"
           },
           {
             "filenamePattern": "*.usdc"

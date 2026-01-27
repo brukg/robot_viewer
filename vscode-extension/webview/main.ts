@@ -653,8 +653,24 @@ class VSCodeRobotViewer {
       // Create a file map for mesh loading
       const fileMap = new Map<string, File | Blob>();
 
-      // Create a File object from the content
-      const file = new File([message.content], message.filename, { type: 'text/xml' });
+      // Handle binary USD files (content is base64 encoded)
+      let content = message.content;
+      let file: File | Blob;
+
+      if (message.isBinary) {
+        // Decode base64 to binary
+        const binaryString = atob(content);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        file = new Blob([bytes], { type: 'application/octet-stream' });
+        // For binary files, we won't have text content for prefetching
+        content = ''; // Clear content since it was base64
+      } else {
+        // Create a File object from the text content
+        file = new File([content], message.filename, { type: 'text/xml' });
+      }
       fileMap.set(message.filename, file);
 
       // Pre-fetch all mesh files referenced in the robot file
@@ -717,9 +733,44 @@ class VSCodeRobotViewer {
       // loadMJCF(content, fileMap)
       return await ModelLoaderFactory.loadMJCF(content, fileMap);
     } else if (fileType === 'usd') {
-      // USD requires special handling - may need WASM viewer
-      this.adapter.log('warn', 'USD support in VS Code extension is limited');
-      throw new Error('USD format support is not yet available in the VS Code extension');
+      // USD support - use Three.js USDZLoader directly for .usdz files
+      // Full USD support requires OpenUSD WASM which is not yet integrated
+      const usdFile = fileMap.get(filename);
+      if (!usdFile) {
+        throw new Error('USD file not found in fileMap');
+      }
+
+      const ext = filename.toLowerCase().split('.').pop();
+      if (ext === 'usdz') {
+        // Use Three.js USDZLoader for .usdz files
+        const { USDZLoader } = await import('three/examples/jsm/loaders/USDZLoader.js');
+        const loader = new USDZLoader();
+        const blobUrl = URL.createObjectURL(usdFile);
+
+        try {
+          const group = await new Promise<any>((resolve, reject) => {
+            loader.load(blobUrl, resolve, undefined, reject);
+          });
+          URL.revokeObjectURL(blobUrl);
+
+          // Create a minimal model wrapper
+          const model = {
+            name: filename.replace(/\.(usdz|usdc|usd|usda)$/i, ''),
+            threeObject: group,
+            links: new Map(),
+            joints: new Map(),
+            getJoint: () => null,
+            userData: { isUSD: true }
+          };
+          return model;
+        } catch (error) {
+          URL.revokeObjectURL(blobUrl);
+          throw error;
+        }
+      } else {
+        // For other USD formats (.usd, .usdc, .usda), show a message
+        throw new Error(`USD format "${ext}" requires OpenUSD WASM viewer which is not yet available in the VS Code extension. Only .usdz files are currently supported.`);
+      }
     }
 
     throw new Error(`Unknown file type: ${fileType}`);
