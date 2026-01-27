@@ -1,0 +1,194 @@
+{
+  "name": "robot-viewer",
+  "displayName": "Robot Viewer",
+  "description": "3D visualization and manipulation of robot description files (URDF, MJCF, USD)",
+  "version": "1.0.0",
+  "publisher": "robot-viewer",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "robot",
+    "urdf",
+    "mjcf",
+    "mujoco",
+    "usd",
+    "ros",
+    "robotics",
+    "3d",
+    "viewer"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/robot-viewer"
+  },
+  "license": "Apache-2.0",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:xml",
+    "onCustomEditor:robotViewer.urdfEditor",
+    "onCustomEditor:robotViewer.mjcfEditor",
+    "onCustomEditor:robotViewer.usdEditor"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "robotViewer.urdfEditor",
+        "displayName": "Robot Viewer (URDF)",
+        "selector": [
+          {
+            "filenamePattern": "*.urdf"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "robotViewer.mjcfEditor",
+        "displayName": "Robot Viewer (MJCF)",
+        "selector": [
+          {
+            "filenamePattern": "*.xml"
+          }
+        ],
+        "priority": "option"
+      },
+      {
+        "viewType": "robotViewer.usdEditor",
+        "displayName": "Robot Viewer (USD)",
+        "selector": [
+          {
+            "filenamePattern": "*.usd"
+          },
+          {
+            "filenamePattern": "*.usda"
+          },
+          {
+            "filenamePattern": "*.usdc"
+          },
+          {
+            "filenamePattern": "*.usdz"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "robotViewer.preview",
+          "name": "Robot Preview",
+          "when": "robotViewer.isRobotFile"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "robotViewer.openPreview",
+        "title": "Open Robot Preview",
+        "category": "Robot Viewer",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "robotViewer.openToSide",
+        "title": "Open Robot Viewer to the Side",
+        "category": "Robot Viewer",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "robotViewer.openWithViewer",
+        "title": "Open with Robot Viewer",
+        "category": "Robot Viewer"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "robotViewer.openToSide",
+          "when": "resourceExtname == .urdf || resourceExtname == .xml || resourceExtname == .usd || resourceExtname == .usda || resourceExtname == .usdc || resourceExtname == .usdz",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "robotViewer.openWithViewer",
+          "when": "resourceExtname == .urdf || resourceExtname == .xml || resourceExtname == .usd || resourceExtname == .usda || resourceExtname == .usdc || resourceExtname == .usdz",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Robot Viewer",
+      "properties": {
+        "robotViewer.defaultView": {
+          "type": "string",
+          "default": "editor",
+          "enum": [
+            "editor",
+            "preview"
+          ],
+          "enumDescriptions": [
+            "Open robot files in the custom editor",
+            "Open robot files in the side preview panel"
+          ],
+          "description": "Default view when opening robot files"
+        },
+        "robotViewer.meshSearchPaths": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional paths to search for mesh files (relative to workspace root)"
+        },
+        "robotViewer.enableSimulation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable MuJoCo physics simulation for MJCF files"
+        },
+        "robotViewer.autoReload": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically reload the viewer when the file changes"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run build",
+    "build": "pnpm run build:extension && pnpm run build:webview",
+    "build:extension": "vite build --config vite.config.extension.ts",
+    "build:webview": "vite build --config vite.config.webview.ts",
+    "watch": "concurrently \"pnpm run watch:extension\" \"pnpm run watch:webview\"",
+    "watch:extension": "vite build --config vite.config.extension.ts --watch",
+    "watch:webview": "vite build --config vite.config.webview.ts --watch",
+    "package": "vsce package --no-dependencies",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.23.0",
+    "@codemirror/autocomplete": "^6.12.0",
+    "@codemirror/commands": "^6.3.3",
+    "@codemirror/lang-xml": "^6.0.2",
+    "@codemirror/search": "^6.5.5",
+    "@codemirror/state": "^6.4.0",
+    "@codemirror/view": "^6.23.0",
+    "codemirror": "^6.0.1",
+    "d3": "^7.9.0",
+    "mujoco-js": "^0.0.7",
+    "three": "^0.163.0",
+    "urdf-loader": "^0.12.5"
+  }
+}
