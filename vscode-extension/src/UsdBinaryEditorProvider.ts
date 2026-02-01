@@ -1,254 +1,195 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { MeshResolver } from './MeshResolver';
-import type { ToWebviewMessage, ToExtensionMessage } from './messages';
+import { Disposable } from './dispose';
+import { WebAppServer } from './WebAppServer';
 
 /**
- * Custom editor provider for binary USD files (.usd, .usdc, .usdz)
- * These files cannot be edited as text, so we use CustomReadonlyEditorProvider
+ * Custom document class for USD files.
  */
-export class UsdBinaryEditorProvider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocument> {
-  private readonly context: vscode.ExtensionContext;
-  private readonly meshResolver: MeshResolver;
+class UsdDocument extends Disposable implements vscode.CustomDocument {
+  static async create(
+    uri: vscode.Uri,
+    backupId: string | undefined
+  ): Promise<UsdDocument> {
+    const dataFile = typeof backupId === 'string' ? vscode.Uri.parse(backupId) : uri;
+    const fileData = await vscode.workspace.fs.readFile(dataFile);
+    return new UsdDocument(uri, fileData);
+  }
 
-  constructor(context: vscode.ExtensionContext) {
+  private readonly _uri: vscode.Uri;
+  private _documentData: Uint8Array;
+
+  private constructor(uri: vscode.Uri, initialContent: Uint8Array) {
+    super();
+    this._uri = uri;
+    this._documentData = initialContent;
+  }
+
+  public get uri(): vscode.Uri {
+    return this._uri;
+  }
+
+  public get documentData(): Uint8Array {
+    return this._documentData;
+  }
+}
+
+/**
+ * Custom editor provider for USD files (.usd, .usda, .usdc, .usdz)
+ * Opens USD files in a browser using a local server with COOP/COEP headers.
+ */
+export class UsdBinaryEditorProvider implements vscode.CustomEditorProvider<UsdDocument> {
+  private static readonly viewType = 'robotViewer.usdEditor';
+  private readonly context: vscode.ExtensionContext;
+  private readonly webAppServer: WebAppServer;
+
+  constructor(context: vscode.ExtensionContext, webAppServer: WebAppServer) {
     this.context = context;
-    this.meshResolver = new MeshResolver();
+    this.webAppServer = webAppServer;
   }
 
   async openCustomDocument(
     uri: vscode.Uri,
-    _openContext: vscode.CustomDocumentOpenContext,
+    openContext: vscode.CustomDocumentOpenContext,
     _token: vscode.CancellationToken
-  ): Promise<vscode.CustomDocument> {
-    // Return a simple document object
-    return { uri, dispose: () => {} };
+  ): Promise<UsdDocument> {
+    const document = await UsdDocument.create(uri, openContext.backupId);
+
+    // Prompt to open in browser
+    const filename = path.basename(uri.fsPath);
+    const choice = await vscode.window.showInformationMessage(
+      `Open "${filename}" in the USD viewer?`,
+      'Open in Browser',
+      'Open as Text'
+    );
+
+    if (choice === 'Open in Browser') {
+      await this.openInBrowser(uri.fsPath);
+    } else if (choice === 'Open as Text') {
+      vscode.commands.executeCommand('vscode.openWith', uri, 'default');
+    }
+
+    return document;
+  }
+
+  /**
+   * Open the USD file in a browser with the local server
+   */
+  private async openInBrowser(filePath: string): Promise<void> {
+    try {
+      // Start server if not running
+      if (!this.webAppServer.isRunning()) {
+        vscode.window.showInformationMessage('Starting USD viewer server...');
+        await this.webAppServer.start();
+      }
+
+      // Open browser with file path
+      const encodedPath = encodeURIComponent(filePath);
+      const url = `${this.webAppServer.getUrl()}?file=${encodedPath}`;
+      vscode.env.openExternal(vscode.Uri.parse(url));
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to start USD viewer: ${error}`);
+    }
   }
 
   async resolveCustomEditor(
-    document: vscode.CustomDocument,
+    document: UsdDocument,
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
-    // Setup webview options
-    webviewPanel.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview'),
-        vscode.Uri.joinPath(this.context.extensionUri, 'resources'),
-        // Allow access to workspace folders for mesh files
-        ...(vscode.workspace.workspaceFolders?.map((f) => f.uri) || []),
-      ],
-    };
+    const filename = path.basename(document.uri.fsPath);
+    const filePath = document.uri.fsPath;
 
-    // Set webview HTML content
-    webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
+    webviewPanel.webview.options = { enableScripts: true };
+    webviewPanel.webview.html = this.getHtmlContent(filename);
 
     // Handle messages from webview
-    webviewPanel.webview.onDidReceiveMessage(async (message: ToExtensionMessage) => {
-      await this.handleMessage(message, document, webviewPanel.webview);
+    webviewPanel.webview.onDidReceiveMessage(async (message) => {
+      if (message.type === 'openWebApp') {
+        await this.openInBrowser(filePath);
+      }
     });
   }
 
-  private async handleMessage(
-    message: ToExtensionMessage,
-    document: vscode.CustomDocument,
-    webview: vscode.Webview
-  ): Promise<void> {
-    switch (message.type) {
-      case 'ready':
-        // Send initial content
-        await this.sendInitialContent(webview, document);
-        break;
-
-      case 'requestMesh':
-        await this.handleMeshRequest(message, document, webview);
-        break;
-
-      case 'log':
-        const logPrefix = '[Robot Viewer Webview]';
-        switch (message.level) {
-          case 'info':
-            console.log(logPrefix, message.message);
-            break;
-          case 'warn':
-            console.warn(logPrefix, message.message);
-            break;
-          case 'error':
-            console.error(logPrefix, message.message);
-            break;
-        }
-        break;
-
-      case 'error':
-        vscode.window.showErrorMessage(`Robot Viewer: ${message.message}`);
-        break;
-    }
-  }
-
-  private async sendInitialContent(
-    webview: vscode.Webview,
-    document: vscode.CustomDocument
-  ): Promise<void> {
-    // Send resource paths first
-    const resourcePaths: ToWebviewMessage = {
-      type: 'resourcePaths',
-      mujocoWasm: webview
-        .asWebviewUri(
-          vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'mujoco')
-        )
-        .toString(),
-      extensionUri: webview
-        .asWebviewUri(this.context.extensionUri)
-        .toString(),
-    };
-    webview.postMessage(resourcePaths);
-
-    // Send settings
-    const config = vscode.workspace.getConfiguration('robotViewer');
-    const settings: ToWebviewMessage = {
-      type: 'settingsChanged',
-      settings: {
-        enableSimulation: config.get('enableSimulation', true),
-        autoReload: config.get('autoReload', true),
-      },
-    };
-    webview.postMessage(settings);
-
-    // Send theme
-    const theme: ToWebviewMessage = {
-      type: 'themeChanged',
-      theme: vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light
-        ? 'light'
-        : 'dark',
-    };
-    webview.postMessage(theme);
-
-    // Read file content
-    const fileData = await vscode.workspace.fs.readFile(document.uri);
-    const filename = path.basename(document.uri.fsPath);
-    const ext = path.extname(filename).toLowerCase();
-
-    // Check if it's a text-based USD file (.usda)
-    const isTextBased = ext === '.usda';
-
-    let content: string;
-    let isBinary: boolean;
-
-    if (isTextBased) {
-      // .usda files are text-based, send as string
-      content = Buffer.from(fileData).toString('utf-8');
-      isBinary = false;
-    } else {
-      // Binary USD files (.usd, .usdc, .usdz) - send as base64
-      content = Buffer.from(fileData).toString('base64');
-      isBinary = true;
-    }
-
-    // Send file content
-    const loadFile: ToWebviewMessage = {
-      type: 'loadFile',
-      content,
-      filename,
-      uri: document.uri.toString(),
-      fileType: 'usd',
-      isBinary,
-    };
-    webview.postMessage(loadFile);
-  }
-
-  private async handleMeshRequest(
-    message: { requestId: string; path: string; basePath: string },
-    document: vscode.CustomDocument,
-    webview: vscode.Webview
-  ): Promise<void> {
-    try {
-      const meshData = await this.meshResolver.resolveMesh(
-        message.path,
-        document.uri,
-        vscode.workspace.workspaceFolders
-      );
-
-      const response: ToWebviewMessage = {
-        type: 'meshData',
-        requestId: message.requestId,
-        path: message.path,
-        data: meshData ? Array.from(meshData) : null,
-      };
-      webview.postMessage(response);
-    } catch (error) {
-      const response: ToWebviewMessage = {
-        type: 'meshData',
-        requestId: message.requestId,
-        path: message.path,
-        data: null,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
-      webview.postMessage(response);
-    }
-  }
-
-  private getHtmlForWebview(webview: vscode.Webview): string {
-    const webviewUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview')
-    );
-
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'assets', 'main.js')
-    );
-
-    const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'assets', 'main.css')
-    );
-
-    const nonce = getNonce();
-
+  private getHtmlContent(filename: string): string {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'none';
-    script-src 'nonce-${nonce}' ${webview.cspSource};
-    style-src ${webview.cspSource} 'unsafe-inline';
-    img-src ${webview.cspSource} data: blob:;
-    font-src ${webview.cspSource};
-    connect-src ${webview.cspSource} blob: data:;
-    worker-src ${webview.cspSource} blob:;
-  ">
-  <link rel="stylesheet" href="${styleUri}">
-  <title>Robot Viewer</title>
+  <title>USD Viewer</title>
   <style>
-    html, body {
+    body {
       margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
+      padding: 40px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--vscode-editor-background, #1e1e1e);
+      color: var(--vscode-foreground, #cccccc);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+      text-align: center;
     }
-    #app {
-      width: 100%;
-      height: 100%;
+    h2 { margin-bottom: 16px; }
+    p { margin: 8px 0; max-width: 500px; line-height: 1.5; }
+    .filename {
+      font-family: monospace;
+      background: var(--vscode-textBlockQuote-background, #2d2d2d);
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 24px;
+      font-size: 14px;
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #ffffff);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: var(--vscode-button-hoverBackground, #1177bb);
     }
   </style>
 </head>
 <body>
-  <div id="app"></div>
-  <script nonce="${nonce}">
-    window.vscodeWebviewUri = "${webviewUri}";
+  <h2>USD File</h2>
+  <p class="filename">${filename}</p>
+  <p>Click below to open the 3D viewer in your browser.</p>
+  <button onclick="openWebApp()">Open USD Viewer</button>
+  <script>
+    const vscode = acquireVsCodeApi();
+    function openWebApp() {
+      vscode.postMessage({ type: 'openWebApp' });
+    }
   </script>
-  <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
 </body>
 </html>`;
   }
-}
 
-function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  private readonly _onDidChangeCustomDocument = new vscode.EventEmitter<
+    vscode.CustomDocumentEditEvent<UsdDocument>
+  >();
+  public readonly onDidChangeCustomDocument = this._onDidChangeCustomDocument.event;
+
+  public saveCustomDocument(): Thenable<void> { return Promise.resolve(); }
+  public saveCustomDocumentAs(): Thenable<void> { return Promise.resolve(); }
+  public revertCustomDocument(): Thenable<void> { return Promise.resolve(); }
+  public backupCustomDocument(document: UsdDocument, context: vscode.CustomDocumentBackupContext): Thenable<vscode.CustomDocumentBackup> {
+    return this.backup(document, context.destination);
   }
-  return text;
+
+  private async backup(document: UsdDocument, destination: vscode.Uri): Promise<vscode.CustomDocumentBackup> {
+    await vscode.workspace.fs.writeFile(destination, document.documentData);
+    return {
+      id: destination.toString(),
+      delete: async () => {
+        try { await vscode.workspace.fs.delete(destination); } catch { }
+      },
+    };
+  }
 }

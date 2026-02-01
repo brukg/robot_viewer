@@ -23,6 +23,8 @@ export default defineConfig({
         'stream',
         'buffer',
         'url',
+        'http',
+        'net',
       ],
       output: {
         format: 'cjs',

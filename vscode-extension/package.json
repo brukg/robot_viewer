@@ -44,7 +44,7 @@
             "filenamePattern": "*.urdf"
           }
         ],
-        "priority": "default"
+        "priority": "option"
       },
       {
         "viewType": "robotViewer.mjcfEditor",
@@ -73,7 +73,7 @@
             "filenamePattern": "*.usdz"
           }
         ],
-        "priority": "default"
+        "priority": "option"
       }
     ],
     "views": {

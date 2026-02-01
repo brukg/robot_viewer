@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>USD Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #1e1e1e;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #cccccc;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      text-align: center;
+    }
+    .loading.hidden { display: none; }
+    .error {
+      color: #ff6b6b;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading">
+    <p>Loading USD Viewer...</p>
+  </div>
+  <iframe id="usd-frame" src="/usd-iframe.html"></iframe>
+  <script>
+    const iframe = document.getElementById('usd-frame');
+    const loadingDiv = document.getElementById('loading');
+    const urlParams = new URLSearchParams(window.location.search);
+    const filePath = urlParams.get('file');
+
+    if (!filePath) {
+      loadingDiv.innerHTML = '<p class="error">No file specified. Use ?file=/path/to/file.usd</p>';
+    }
+
+    window.addEventListener('message', async (e) => {
+      const data = e.data;
+      if (!data || typeof data !== 'object') return;
+
+      if (data.type === 'IFRAME_READY' && filePath) {
+        loadingDiv.innerHTML = '<p>Loading file...</p>';
+
+        try {
+          // Fetch file from local filesystem via API
+          const response = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`);
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || 'Failed to fetch file');
+          }
+
+          const buffer = await response.arrayBuffer();
+          const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'model.usd';
+
+          // Send to USD iframe
+          iframe.contentWindow.postMessage({
+            type: 'USD_LOAD_ENTRIES',
+            entries: [{ path: '/' + fileName, buffer }],
+            primaryPath: '/' + fileName
+          }, '*');
+
+        } catch (error) {
+          loadingDiv.innerHTML = `<p class="error">Failed to load file:<br>${error.message}</p>`;
+          console.error('USD Loader error:', error);
+        }
+      }
+
+      if (data.type === 'USD_LOADING_START') {
+        loadingDiv.innerHTML = '<p>Initializing USD viewer...</p>';
+      }
+
+      if (data.type === 'USD_LOADED') {
+        loadingDiv.classList.add('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

@@ -967,7 +967,53 @@ class App {
 
 // Create and start application
 const app = new App();
-app.init();
+app.init().then(() => {
+    // Check for file parameter in URL (for VS Code integration)
+    const urlParams = new URLSearchParams(window.location.search);
+    const filePath = urlParams.get('file');
+    if (filePath) {
+        // Wait a bit for fileHandler to be fully ready
+        setTimeout(() => {
+            loadFileFromPath(decodeURIComponent(filePath));
+        }, 100);
+    }
+});
 
 // Expose to global (for debugging)
 window.app = app;
+
+/**
+ * Load file from local path (for VS Code integration)
+ * @param {string} filePath - Local file path
+ */
+async function loadFileFromPath(filePath) {
+    try {
+        console.log('Loading file from path:', filePath);
+
+        // Ensure app and fileHandler are initialized
+        if (!app || !app.fileHandler) {
+            console.error('App or fileHandler not initialized yet');
+            // Retry after a short delay
+            setTimeout(() => loadFileFromPath(filePath), 200);
+            return;
+        }
+
+        // Use the server's API endpoint to fetch local files
+        // The server can access local filesystem, browsers cannot
+        const apiUrl = `/api/file?path=${encodeURIComponent(filePath)}`;
+        const response = await fetch(apiUrl);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to fetch file: ${errorText}`);
+        }
+
+        const blob = await response.blob();
+        const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'model';
+        const file = new File([blob], fileName, { type: blob.type });
+        await app.fileHandler.loadFile(file);
+    } catch (error) {
+        console.error('Failed to load file from path:', error);
+        alert(`Failed to load file: ${filePath}\n\nError: ${error.message}`);
+    }
+}

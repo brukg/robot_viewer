@@ -1,17 +1,24 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { RobotEditorProvider } from './RobotEditorProvider';
 import { RobotPreviewProvider } from './RobotPreviewProvider';
 import { UsdBinaryEditorProvider } from './UsdBinaryEditorProvider';
+import { WebAppServer } from './WebAppServer';
 
 let previewProvider: RobotPreviewProvider | undefined;
+let webAppServer: WebAppServer | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Robot Viewer extension is now active');
 
+  // Initialize web app server for USD support
+  const webappPath = path.join(context.extensionPath, 'resources', 'webapp');
+  webAppServer = new WebAppServer(webappPath);
+
   // Register custom editor providers
   const urdfEditorProvider = new RobotEditorProvider(context, 'urdf');
   const mjcfEditorProvider = new RobotEditorProvider(context, 'mjcf');
-  const usdEditorProvider = new UsdBinaryEditorProvider(context); // For all USD formats
+  const usdEditorProvider = new UsdBinaryEditorProvider(context, webAppServer);
 
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
@@ -128,6 +135,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   console.log('Robot Viewer extension is now deactivated');
+  // Stop the web app server
+  if (webAppServer) {
+    webAppServer.stop();
+    webAppServer = undefined;
+  }
 }
 
 function isRobotFile(uri: vscode.Uri): boolean {
