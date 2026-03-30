@@ -32,7 +32,7 @@ class VSCodeRobotViewer {
   private modelGraphView: ModelGraphView | null = null;
   private mujocoSimulationManager: MujocoSimulationManager | null = null;
   private currentModel: any = null;
-  private currentFileType: 'urdf' | 'mjcf' | 'usd' = 'urdf';
+  private currentFileType: 'urdf' | 'mjcf' | 'usd' | 'xacro' = 'urdf';
   private adapter = getVSCodeAdapter();
   private settings = {
     enableSimulation: true,
@@ -724,20 +724,18 @@ class VSCodeRobotViewer {
   private async loadModel(
     content: string,
     filename: string,
-    fileType: 'urdf' | 'mjcf' | 'usd',
+    fileType: 'urdf' | 'mjcf' | 'usd' | 'xacro',
     fileMap: Map<string, File | Blob>,
     isBinary?: boolean
   ): Promise<any> {
     // Use ModelLoaderFactory static methods
     if (fileType === 'urdf') {
-      // loadURDF(content, fileName, fileMap, file)
       return await ModelLoaderFactory.loadURDF(content, filename, fileMap, null);
+    } else if (fileType === 'xacro') {
+      return await ModelLoaderFactory.loadXacro(content, filename, fileMap, null);
     } else if (fileType === 'mjcf') {
-      // loadMJCF(content, fileMap)
       return await ModelLoaderFactory.loadMJCF(content, fileMap);
     } else if (fileType === 'usd') {
-      // USD files use a separate provider (UsdBinaryEditorProvider) with iframe-based viewer
-      // This code path should never be reached
       throw new Error('USD files should be opened with the USD viewer, not this webview');
     }
 
@@ -749,7 +747,7 @@ class VSCodeRobotViewer {
    */
   private async prefetchMeshFiles(
     content: string,
-    fileType: 'urdf' | 'mjcf' | 'usd',
+    fileType: 'urdf' | 'mjcf' | 'usd' | 'xacro',
     fileMap: Map<string, File | Blob>
   ): Promise<void> {
     const meshPaths = this.extractMeshPaths(content, fileType);
@@ -789,11 +787,11 @@ class VSCodeRobotViewer {
   /**
    * Extract mesh file paths from robot description content
    */
-  private extractMeshPaths(content: string, fileType: 'urdf' | 'mjcf' | 'usd'): string[] {
+  private extractMeshPaths(content: string, fileType: 'urdf' | 'mjcf' | 'usd' | 'xacro'): string[] {
     const meshPaths: string[] = [];
     const meshExtensions = /\.(stl|dae|obj|gltf|glb|STL|DAE|OBJ|GLTF|GLB)$/i;
 
-    if (fileType === 'urdf') {
+    if (fileType === 'urdf' || fileType === 'xacro') {
       // Extract from URDF: <mesh filename="..."/>
       const meshRegex = /<mesh\s+filename\s*=\s*["']([^"']+)["']/gi;
       let match;

@@ -8,7 +8,7 @@ export interface LoadFileMessage {
   content: string;
   filename: string;
   uri: string;
-  fileType: 'urdf' | 'mjcf' | 'usd';
+  fileType: 'urdf' | 'mjcf' | 'usd' | 'xacro';
   isBinary?: boolean; // true for binary USD files (.usd, .usdc, .usdz)
 }
 

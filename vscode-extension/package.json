@@ -2,7 +2,7 @@
   "name": "robot-viewer",
   "displayName": "Robot Viewer",
   "description": "3D visualization and manipulation of robot description files (URDF, MJCF, USD)",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "publisher": "robot-viewer",
   "engines": {
     "vscode": "^1.85.0"
@@ -17,6 +17,7 @@
     "mjcf",
     "mujoco",
     "usd",
+    "xacro",
     "ros",
     "robotics",
     "3d",
@@ -32,7 +33,8 @@
     "onLanguage:xml",
     "onCustomEditor:robotViewer.urdfEditor",
     "onCustomEditor:robotViewer.mjcfEditor",
-    "onCustomEditor:robotViewer.usdEditor"
+    "onCustomEditor:robotViewer.usdEditor",
+    "onCustomEditor:robotViewer.xacroEditor"
   ],
   "contributes": {
     "customEditors": [
@@ -52,6 +54,16 @@
         "selector": [
           {
             "filenamePattern": "*.xml"
+          }
+        ],
+        "priority": "option"
+      },
+      {
+        "viewType": "robotViewer.xacroEditor",
+        "displayName": "Robot Viewer (Xacro)",
+        "selector": [
+          {
+            "filenamePattern": "*.xacro"
           }
         ],
         "priority": "option"
@@ -109,14 +121,14 @@
       "editor/title": [
         {
           "command": "robotViewer.openToSide",
-          "when": "resourceExtname == .urdf || resourceExtname == .xml || resourceExtname == .usd || resourceExtname == .usda || resourceExtname == .usdc || resourceExtname == .usdz",
+          "when": "resourceExtname == .urdf || resourceExtname == .xml || resourceExtname == .xacro || resourceExtname == .usd || resourceExtname == .usda || resourceExtname == .usdc || resourceExtname == .usdz",
           "group": "navigation"
         }
       ],
       "explorer/context": [
         {
           "command": "robotViewer.openWithViewer",
-          "when": "resourceExtname == .urdf || resourceExtname == .xml || resourceExtname == .usd || resourceExtname == .usda || resourceExtname == .usdc || resourceExtname == .usdz",
+          "when": "resourceExtname == .urdf || resourceExtname == .xml || resourceExtname == .xacro || resourceExtname == .usd || resourceExtname == .usda || resourceExtname == .usdc || resourceExtname == .usdz",
           "group": "navigation"
         }
       ]

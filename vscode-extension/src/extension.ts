@@ -18,6 +18,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Register custom editor providers
   const urdfEditorProvider = new RobotEditorProvider(context, 'urdf');
   const mjcfEditorProvider = new RobotEditorProvider(context, 'mjcf');
+  const xacroEditorProvider = new RobotEditorProvider(context, 'xacro');
   const usdEditorProvider = new UsdBinaryEditorProvider(context, webAppServer);
 
   context.subscriptions.push(
@@ -37,6 +38,19 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerCustomEditorProvider(
       'robotViewer.mjcfEditor',
       mjcfEditorProvider,
+      {
+        webviewOptions: {
+          retainContextWhenHidden: true,
+        },
+        supportsMultipleEditorsPerDocument: false,
+      }
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(
+      'robotViewer.xacroEditor',
+      xacroEditorProvider,
       {
         webviewOptions: {
           retainContextWhenHidden: true,
@@ -146,6 +160,7 @@ function isRobotFile(uri: vscode.Uri): boolean {
   const path = uri.fsPath.toLowerCase();
   return (
     path.endsWith('.urdf') ||
+    path.endsWith('.xacro') ||
     path.endsWith('.xml') ||
     path.endsWith('.usd') ||
     path.endsWith('.usda') ||
@@ -158,6 +173,8 @@ function getEditorTypeForUri(uri: vscode.Uri): string {
   const path = uri.fsPath.toLowerCase();
   if (path.endsWith('.urdf')) {
     return 'robotViewer.urdfEditor';
+  } else if (path.endsWith('.xacro')) {
+    return 'robotViewer.xacroEditor';
   } else if (path.endsWith('.xml')) {
     return 'robotViewer.mjcfEditor';
   } else if (

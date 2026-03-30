@@ -4,7 +4,7 @@ import { MeshResolver } from './MeshResolver';
 import { SyncManager } from './SyncManager';
 import type { ToWebviewMessage, ToExtensionMessage } from './messages';
 
-type FileType = 'urdf' | 'mjcf' | 'usd';
+type FileType = 'urdf' | 'mjcf' | 'usd' | 'xacro';
 
 export class RobotEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly context: vscode.ExtensionContext;
@@ -265,6 +265,7 @@ export class RobotEditorProvider implements vscode.CustomTextEditorProvider {
   private detectFileType(uri: vscode.Uri): FileType {
     const ext = path.extname(uri.fsPath).toLowerCase();
     if (ext === '.urdf') return 'urdf';
+    if (ext === '.xacro') return 'xacro';
     if (ext === '.xml') return 'mjcf';
     return 'usd';
   }
