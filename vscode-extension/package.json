@@ -2,7 +2,7 @@
   "name": "robot-viewer",
   "displayName": "Robot Viewer",
   "description": "3D visualization and manipulation of robot description files (URDF, MJCF, USD)",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "robot-viewer",
   "engines": {
     "vscode": "^1.85.0"

@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { PointerJointDragControls } from '../utils/JointDragControls.js';
 import { ModelLoaderFactory } from '../loaders/ModelLoaderFactory.js';
 import { EnvironmentManager } from './EnvironmentManager.js';
+import { disposeObject3D } from '../utils/ThreeUtils.js';
 import { VisualizationManager } from './VisualizationManager.js';
 import { InertialVisualization } from './InertialVisualization.js';
 import { ConstraintManager } from './ConstraintManager.js';
@@ -105,9 +106,6 @@ export class SceneManager {
         // Window resize - use ResizeObserver to listen for canvas container size changes
         this.setupResizeObserver();
 
-        // Start continuous render loop
-        this.startRenderLoop();
-
         // Render immediately to show initial scene
         this.redraw();
     }
@@ -115,35 +113,8 @@ export class SceneManager {
     // ==================== Render Loop ====================
 
     /**
-     * Start continuous render loop (borrowed from urdf-loaders implementation)
-     */
-    startRenderLoop() {
-        const renderLoop = () => {
-            // Only render when needed (controlled by _dirty flag)
-            if (this._dirty) {
-                this.renderer.render(this.scene, this.camera);
-                this._dirty = false;
-            }
-            this._renderLoopId = requestAnimationFrame(renderLoop);
-        };
-        renderLoop();
-    }
-
-    stopRenderLoop() {
-        if (this._renderLoopId) {
-            cancelAnimationFrame(this._renderLoopId);
-            this._renderLoopId = null;
-        }
-
-        // Clean up ResizeObserver
-        if (this.resizeObserver) {
-            this.resizeObserver.disconnect();
-            this.resizeObserver = null;
-        }
-    }
-
-    /**
-     * Mark scene as needing re-render (on-demand rendering)
+     * Mark scene as needing re-render (on-demand rendering).
+     * The actual render happens in the next animation frame via render().
      */
     redraw() {
         this._dirty = true;
@@ -157,14 +128,45 @@ export class SceneManager {
         this._renderingPaused = false;
     }
 
+    /**
+     * Render if the scene is dirty. Called by the animation loop in main.js.
+     */
     render() {
-        // If rendering is paused, don't render
+        if (this._renderingPaused || !this._dirty) {
+            return;
+        }
+        this.renderer.render(this.scene, this.camera);
+        this._dirty = false;
+    }
+
+    /**
+     * Force an immediate render regardless of dirty flag.
+     * Use sparingly — only for resize and snapshot paths that need
+     * the canvas to reflect the current state synchronously.
+     */
+    forceRender() {
         if (this._renderingPaused) {
             return;
         }
-        // Render immediately (for scenes requiring immediate update)
         this.renderer.render(this.scene, this.camera);
         this._dirty = false;
+    }
+
+    dispose() {
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
+        if (this._resizeHandler) {
+            window.removeEventListener('resize', this._resizeHandler);
+            this._resizeHandler = null;
+        }
+        if (this.dragControls) {
+            this.dragControls.dispose();
+            this.dragControls = null;
+        }
+        this.controls.dispose();
+        this.renderer.dispose();
     }
 
     // ==================== Model Management ====================
@@ -262,6 +264,7 @@ export class SceneManager {
         // Update environment (adjust ground position and shadows, but not camera)
         // Don't adjust camera on first time, wait for mesh to load completely
         this.updateEnvironment(false);
+        this.redraw();
 
         if (isSingleMesh) {
             // Single mesh: synchronous loading, delay camera adjustment to keep snapshot occlusion
@@ -269,42 +272,48 @@ export class SceneManager {
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     this.updateEnvironment(true);
-
-                    // Trigger model ready event
+                    this.redraw();
                     this.emit('modelReady', model);
                 });
             });
         } else {
-            // URDF/MJCF model: mesh files are loaded asynchronously, need to delay
+            // URDF/MJCF model: mesh files may load asynchronously
             // Multiple extractions to catch meshes loaded at different times
             setTimeout(() => {
                 this.visualizationManager.extractVisualAndCollision(model);
+                this.redraw();
             }, 100);
 
             setTimeout(() => {
                 this.visualizationManager.extractVisualAndCollision(model);
                 this.updateEnvironment(true);
+                this.redraw();
                 this.emit('modelReady', model);
             }, 1000);
 
             setTimeout(() => {
                 this.visualizationManager.extractVisualAndCollision(model);
+                this.redraw();
             }, 2500);
         }
     }
 
     removeModel(model) {
-        if (model && model.threeObject && model.threeObject.parent) {
-            model.threeObject.parent.remove(model.threeObject);
-        }
-
-        // Clear all managers
+        // Clear all managers first (they may reference model objects)
         this.axesManager.clear();
         this.visualizationManager.clear();
         this.inertialVisualization.clear();
         this.constraintManager.clear();
         this.measurementManager.clear();
         this.highlightManager.clearHighlight();
+
+        // Dispose GPU resources and remove from scene
+        if (model && model.threeObject) {
+            disposeObject3D(model.threeObject);
+            if (model.threeObject.parent) {
+                model.threeObject.parent.remove(model.threeObject);
+            }
+        }
 
         // Clear drag controls
         if (this.dragControls) {
@@ -813,13 +822,7 @@ export class SceneManager {
             wireframe.parent.updateMatrixWorld(true);
         }
 
-        // Force re-render multiple times to ensure axes display
         this.redraw();
-        this.render();
-        requestAnimationFrame(() => {
-            this.redraw();
-            this.render();
-        });
 
         // Clear highlight (don't auto-highlight mesh)
         this.highlightManager.clearHighlight();
@@ -831,6 +834,7 @@ export class SceneManager {
      */
     clearMeshHelper() {
         if (this.meshCoordinateAxes) {
+            disposeObject3D(this.meshCoordinateAxes);
             if (this.meshCoordinateAxes.parent) {
                 this.meshCoordinateAxes.parent.remove(this.meshCoordinateAxes);
             }
@@ -838,6 +842,7 @@ export class SceneManager {
         }
 
         if (this.meshWireframe) {
+            disposeObject3D(this.meshWireframe);
             if (this.meshWireframe.parent) {
                 this.meshWireframe.parent.remove(this.meshWireframe);
             }
@@ -902,7 +907,8 @@ export class SceneManager {
         // Use ResizeObserver to listen for canvas container size changes
         const container = this.canvas.parentElement;
         if (!container) {
-            window.addEventListener('resize', () => this.onWindowResize());
+            this._resizeHandler = () => this.onWindowResize();
+            window.addEventListener('resize', this._resizeHandler);
             return;
         }
 
@@ -944,8 +950,8 @@ export class SceneManager {
         this.renderer.setSize(width, height, true);
         this.renderer.setPixelRatio(window.devicePixelRatio);
 
-        // Render immediately
-        this.render();
+        // Render immediately to avoid black areas
+        this.forceRender();
     }
 
     onWindowResize() {
@@ -967,7 +973,7 @@ export class SceneManager {
         this.renderer.setPixelRatio(window.devicePixelRatio);
 
         // Render immediately to avoid black areas
-        this.render();
+        this.forceRender();
     }
 
     // ==================== Event System ====================

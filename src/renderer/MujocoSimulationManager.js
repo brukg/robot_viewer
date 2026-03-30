@@ -8,6 +8,7 @@ import { DragStateManager } from '../utils/DragStateManager.js';
 import { MathUtils } from '../utils/MathUtils.js';
 import { CoordinateAxesManager } from './CoordinateAxesManager.js';
 import { InertialVisualization } from './InertialVisualization.js';
+import { disposeObject3D } from '../utils/ThreeUtils.js';
 import { VisualizationManager } from './VisualizationManager.js';
 
 export class MujocoSimulationManager {
@@ -1369,6 +1370,7 @@ export class MujocoSimulationManager {
 
         // Clear Three.js objects
         if (this.mujocoRoot) {
+            disposeObject3D(this.mujocoRoot);
             if (this.mujocoRoot.parent) {
                 this.mujocoRoot.parent.remove(this.mujocoRoot);
             }

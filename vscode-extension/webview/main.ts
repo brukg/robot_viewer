@@ -1004,9 +1004,10 @@ class VSCodeRobotViewer {
     if (this.sceneManager) {
       this.sceneManager.update();
 
-      // Update MuJoCo simulation if active
+      // Update MuJoCo simulation — always needs a render when active
       if (this.mujocoSimulationManager?.hasScene()) {
         this.mujocoSimulationManager.update(performance.now());
+        this.sceneManager.redraw();
       }
 
       this.sceneManager.render();

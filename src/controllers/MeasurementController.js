@@ -3,7 +3,6 @@
  * Responsible for distance measurement between objects
  */
 import * as THREE from 'three';
-import * as d3 from 'd3';
 
 export class MeasurementController {
     constructor(sceneManager) {
@@ -20,26 +19,23 @@ export class MeasurementController {
         if (index >= 0) {
             // Deselect
             this.selectedObjects.splice(index, 1);
-            d3.select(element).classed('measurement-selected', false);
+            element?.classList.remove('measurement-selected');
         } else {
             // Add selection
             if (this.selectedObjects.length >= 2) {
                 const firstObj = this.selectedObjects.shift();
-                const svg = d3.select('#model-graph-svg');
+                const svgEl = document.getElementById('model-graph-svg');
 
-                if (firstObj.type === 'joint') {
-                    svg.selectAll('.graph-joint-group')
-                        .filter(d => d.target?.data?.jointName === firstObj.name)
-                        .classed('measurement-selected', false);
-                } else if (firstObj.type === 'link') {
-                    svg.selectAll('.graph-node')
-                        .filter(d => d.data?.data?.name === firstObj.name)
-                        .classed('measurement-selected', false);
+                if (svgEl) {
+                    // Clear measurement-selected from the dequeued object's graph node
+                    svgEl.querySelectorAll('.measurement-selected').forEach(el => {
+                        el.classList.remove('measurement-selected');
+                    });
                 }
             }
 
             this.selectedObjects.push({ ...object, type: type });
-            d3.select(element).classed('measurement-selected', true);
+            element?.classList.add('measurement-selected');
         }
 
         // If 2 objects selected, show measurement result
@@ -107,9 +103,12 @@ export class MeasurementController {
     clearMeasurement() {
         this.selectedObjects = [];
 
-        const svg = d3.select('#model-graph-svg');
-        svg.selectAll('.graph-node').classed('measurement-selected', false);
-        svg.selectAll('.graph-joint-group').classed('measurement-selected', false);
+        const svgEl = document.getElementById('model-graph-svg');
+        if (svgEl) {
+            svgEl.querySelectorAll('.measurement-selected').forEach(el => {
+                el.classList.remove('measurement-selected');
+            });
+        }
 
         if (this.sceneManager) {
             this.sceneManager.measurementManager.clearMeasurement();

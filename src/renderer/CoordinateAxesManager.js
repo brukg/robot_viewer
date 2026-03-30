@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeObject3D } from '../utils/ThreeUtils.js';
 
 /**
  * CoordinateAxesManager - Handles link coordinate axes and joint axes visualization
@@ -515,7 +516,8 @@ export class CoordinateAxesManager {
      * Clear all link axes
      */
     clearAllLinkAxes() {
-        this.linkAxesHelpers.forEach((axes, linkName) => {
+        this.linkAxesHelpers.forEach((axes) => {
+            disposeObject3D(axes);
             if (axes.parent) {
                 axes.parent.remove(axes);
             }
@@ -527,7 +529,8 @@ export class CoordinateAxesManager {
      * Clear all joint axes
      */
     clearAllJointAxes() {
-        this.jointAxesHelpers.forEach((axisInfo, jointName) => {
+        this.jointAxesHelpers.forEach((axisInfo) => {
+            disposeObject3D(axisInfo.mesh);
             if (axisInfo.isAttached && axisInfo.parent) {
                 axisInfo.parent.remove(axisInfo.mesh);
             }

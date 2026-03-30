@@ -264,7 +264,6 @@ export class JointControlsUI {
                 joint.currentValue = valueInRad;
                 updateValueInput();
                 this.sceneManager.redraw();
-                this.sceneManager.render();
 
                 // Trigger measurement update
                 if (this.sceneManager.onMeasurementUpdate) {
@@ -312,7 +311,6 @@ export class JointControlsUI {
                 joint.currentValue = valueInRad;
                 updateValueInput();
                 this.sceneManager.redraw();
-                this.sceneManager.render();
 
                 // Trigger measurement update
                 if (this.sceneManager.onMeasurementUpdate) {
@@ -485,7 +483,6 @@ export class JointControlsUI {
                 slider._pendingRender = true;
                 requestAnimationFrame(() => {
                     this.sceneManager.redraw();
-                    this.sceneManager.render();
 
                     // Trigger measurement update
                     if (this.sceneManager.onMeasurementUpdate) {
@@ -524,7 +521,6 @@ export class JointControlsUI {
 
             updateValueInput();
             this.sceneManager.redraw();
-            this.sceneManager.render();
 
             // Trigger measurement update
             if (this.sceneManager.onMeasurementUpdate) {
@@ -589,7 +585,7 @@ export class JointControlsUI {
             }
         });
 
-        this.sceneManager.render();
+        this.sceneManager.redraw();
 
         // Trigger measurement update
         if (this.sceneManager.onMeasurementUpdate) {

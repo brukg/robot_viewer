@@ -884,6 +884,13 @@ export class VisualizationManager {
      * Clear all meshes
      */
     clear() {
+        // Dispose collision mesh materials (created as replacements)
+        this.collisionMeshes.forEach(mesh => {
+            if (mesh.material) {
+                const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                materials.forEach(mat => mat?.dispose());
+            }
+        });
         this.visualMeshes = [];
         this.collisionMeshes = [];
         this.colliders = [];

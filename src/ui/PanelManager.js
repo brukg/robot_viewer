@@ -324,13 +324,12 @@ export class PanelManager {
     /**
      * Save current transform state of model structure graph
      */
-    saveModelGraphTransform() {
+    async saveModelGraphTransform() {
         try {
             const svg = document.querySelector('#model-graph-svg');
             if (!svg) return;
 
-            const d3 = window.d3;
-            if (!d3) return;
+            const d3 = await import('d3');
 
             const svgSelection = d3.select(svg);
             const currentTransform = d3.zoomTransform(svg);
@@ -350,13 +349,12 @@ export class PanelManager {
     /**
      * Restore model structure graph to original view
      */
-    restoreModelGraphView() {
+    async restoreModelGraphView() {
         try {
             const svg = document.querySelector('#model-graph-svg');
             if (!svg) return;
 
-            const d3 = window.d3;
-            if (!d3) return;
+            const d3 = await import('d3');
 
             const svgSelection = d3.select(svg);
             const container = svgSelection.select('.zoom-container');

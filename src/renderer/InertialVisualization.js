@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MathUtils } from '../utils/MathUtils.js';
+import { disposeObject3D } from '../utils/ThreeUtils.js';
 
 /**
  * InertialVisualization - Handles center of mass and inertia visualization
@@ -392,9 +393,11 @@ export class InertialVisualization {
      */
     clear() {
         this.comMarkers.forEach(marker => {
+            disposeObject3D(marker);
             if (marker.parent) marker.parent.remove(marker);
         });
         this.inertiaEllipsoids.forEach(ellipsoid => {
+            disposeObject3D(ellipsoid);
             if (ellipsoid.parent) ellipsoid.parent.remove(ellipsoid);
         });
         this.comMarkers = [];

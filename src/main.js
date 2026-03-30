@@ -3,7 +3,6 @@
  * Integrates all modules
  */
 import * as THREE from 'three';
-import * as d3 from 'd3';
 import { SceneManager } from './renderer/SceneManager.js';
 import { UIController } from './ui/UIController.js';
 import { FileHandler } from './controllers/FileHandler.js';
@@ -16,9 +15,6 @@ import { MeasurementController } from './controllers/MeasurementController.js';
 import { USDViewerManager } from './renderer/USDViewerManager.js';
 import { MujocoSimulationManager } from './renderer/MujocoSimulationManager.js';
 import { i18n } from './utils/i18n.js';
-
-// Expose d3 globally for PanelManager
-window.d3 = d3;
 
 // Expose i18n globally
 window.i18n = i18n;
@@ -344,9 +340,8 @@ class App {
 
         this.currentModel = model;
 
-        // Force render current state first (important!)
-        this.sceneManager.redraw();
-        this.sceneManager.render();
+        // Force render current state first (needed for snapshot toDataURL)
+        this.sceneManager.forceRender();
 
         // Create snapshot (synchronous), before addModel
         canvas = document.getElementById('canvas');
@@ -453,8 +448,10 @@ class App {
 
             // Clear and hide graph
             if (this.modelGraphView) {
-                const svg = d3.select('#model-graph-svg');
-                svg.selectAll('*:not(defs)').remove();
+                const svgEl = document.getElementById('model-graph-svg');
+                if (svgEl) {
+                    svgEl.querySelectorAll(':scope > *:not(defs)').forEach(el => el.remove());
+                }
                 const emptyState = document.getElementById('graph-empty-state');
                 if (emptyState) {
                     emptyState.classList.remove('hidden');
@@ -571,8 +568,7 @@ class App {
 
                     // Clear selection in graph
                     if (this.modelGraphView) {
-                        const svg = d3.select('#model-graph-svg');
-                        this.modelGraphView.clearAllSelections(svg);
+                        this.modelGraphView.clearSelections();
                     }
 
                     // Clear measurement state
@@ -609,8 +605,7 @@ class App {
                     target.id === 'floating-model-tree') {
 
                     if (this.modelGraphView) {
-                        const svg = d3.select('#model-graph-svg');
-                        this.modelGraphView.clearAllSelections(svg);
+                        this.modelGraphView.clearSelections();
                     }
 
                     if (this.measurementController) {
@@ -955,9 +950,10 @@ class App {
         if (this.sceneManager) {
             this.sceneManager.update();
 
-            // Update MuJoCo simulation
+            // Update MuJoCo simulation — always needs a render when active
             if (this.mujocoSimulationManager && this.mujocoSimulationManager.hasScene()) {
                 this.mujocoSimulationManager.update(performance.now());
+                this.sceneManager.redraw();
             }
 
             this.sceneManager.render();

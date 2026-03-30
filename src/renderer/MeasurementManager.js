@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeObject3D } from '../utils/ThreeUtils.js';
 
 /**
  * MeasurementManager - Handles distance measurement visualization
@@ -226,6 +227,7 @@ export class MeasurementManager {
      */
     clearMeasurement() {
         if (this.measurementHelper) {
+            disposeObject3D(this.measurementHelper);
             this.sceneManager.scene.remove(this.measurementHelper);
             this.measurementHelper = null;
             this.sceneManager.redraw();

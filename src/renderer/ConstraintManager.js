@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ModelLoaderFactory } from '../loaders/ModelLoaderFactory.js';
+import { disposeObject3D } from '../utils/ThreeUtils.js';
 
 /**
  * ConstraintManager - Handles parallel mechanism constraint visualization and solving
@@ -439,6 +440,7 @@ export class ConstraintManager {
      */
     clear() {
         this.constraintVisuals.forEach(visual => {
+            disposeObject3D(visual);
             if (visual.parent) visual.parent.remove(visual);
         });
         this.constraintVisuals = [];

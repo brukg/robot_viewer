@@ -2,7 +2,6 @@
  * CodeEditorManager - Code editor management module
  * Responsible for complete code editor functionality: open, close, save, reload, etc.
  */
-import { CodeEditor } from '../editor/CodeEditor.js';
 import { readFileContent } from '../utils/FileUtils.js';
 
 export class CodeEditorManager {
@@ -24,27 +23,26 @@ export class CodeEditorManager {
      */
     init(fileMap) {
         this.fileMap = fileMap;
-
-        const editorWrapper = document.getElementById('code-editor-wrapper');
-        if (!editorWrapper) {
+        this._editorWrapper = document.getElementById('code-editor-wrapper');
+        if (!this._editorWrapper) {
             return;
         }
+        this.setupEditorControls();
+        this.updateEditorSaveStatus();
+        this.setupFileControls();
+    }
 
-        this.codeEditorInstance = new CodeEditor(editorWrapper);
+    async _ensureEditor() {
+        if (this.codeEditorInstance) return;
+        if (!this._editorWrapper) return;
 
-        // Listen for content changes
+        const { CodeEditor } = await import('../editor/CodeEditor.js');
+        this.codeEditorInstance = new CodeEditor(this._editorWrapper);
+
         this.codeEditorInstance.onChange((content) => {
             this.editorState.currentContent = content;
             this.updateEditorSaveStatus();
         });
-
-        this.setupEditorControls();
-
-        // Update save status on initialization (show "unsaved")
-        this.updateEditorSaveStatus();
-
-        // Initialize filename input and type selector
-        this.setupFileControls();
     }
 
     /**
@@ -264,7 +262,9 @@ export class CodeEditorManager {
      * Load file into editor
      */
     async loadFile(file, skipIfReloading = true) {
-        if (!file || !this.codeEditorInstance) return;
+        if (!file) return;
+        await this._ensureEditor();
+        if (!this.codeEditorInstance) return;
 
         // If reloading in progress, skip (avoid overwriting editor content)
         if (skipIfReloading && this._reloadingInProgress) {

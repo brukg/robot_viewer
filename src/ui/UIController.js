@@ -70,7 +70,6 @@ export class UIController {
                     }
 
                     this.sceneManager.redraw();
-                    this.sceneManager.render();
                 });
             });
         }
@@ -87,7 +86,6 @@ export class UIController {
                     }
 
                     this.sceneManager.redraw();
-                    this.sceneManager.render();
                 });
             });
         }
@@ -105,7 +103,6 @@ export class UIController {
 
                     this.sceneManager.updateVisualTransparency();
                     this.sceneManager.redraw();
-                    this.sceneManager.render();
                 });
             });
         }
@@ -122,7 +119,6 @@ export class UIController {
                     }
 
                     this.sceneManager.redraw();
-                    this.sceneManager.render();
                 });
             });
         }
@@ -468,12 +464,10 @@ export class UIController {
                 this.sceneManager.axesManager.ensureAxesNoShadow();
                 this.sceneManager.updateEnvironment();
                 this.sceneManager.redraw();
-                this.sceneManager.render();
             } else {
                 shadowBtn.classList.remove('active');
                 this.sceneManager.visualizationManager.toggleShadow(false, this.sceneManager.renderer, this.sceneManager.directionalLight);
                 this.sceneManager.redraw();
-                this.sceneManager.render();
             }
         });
     }
@@ -500,7 +494,6 @@ export class UIController {
                 this.sceneManager.visualizationManager.toggleEnhancedLighting(false);
             }
             this.sceneManager.redraw();
-            this.sceneManager.render();
         });
     }
 

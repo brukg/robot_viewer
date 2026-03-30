@@ -2,7 +2,11 @@
  * ModelGraphView - D3.js model structure graph view
  * Responsible for drawing and managing model tree structure graph
  */
-import * as d3 from 'd3';
+let d3 = null;
+async function getD3() {
+    if (!d3) d3 = await import('d3');
+    return d3;
+}
 
 export class ModelGraphView {
     constructor(sceneManager, measurementController = null) {
@@ -17,7 +21,8 @@ export class ModelGraphView {
     /**
      * Draw model structure graph
      */
-    drawModelGraph(model) {
+    async drawModelGraph(model) {
+        const d3 = await getD3();
         const svg = d3.select('#model-graph-svg');
         const emptyState = document.getElementById('graph-empty-state');
 
@@ -674,6 +679,15 @@ export class ModelGraphView {
     /**
      * Clear all selection states (unified handling, ensure styles are correctly reset)
      */
+    /**
+     * Clear selections using a cached d3 reference (no d3 import needed by caller)
+     */
+    async clearSelections() {
+        const d3 = await getD3();
+        const svg = d3.select('#model-graph-svg');
+        this.clearAllSelections(svg);
+    }
+
     clearAllSelections(svg) {
         // Get current theme
         const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
