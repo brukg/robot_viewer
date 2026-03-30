@@ -8,14 +8,152 @@ import { loadMeshFile, ensureMeshHasPhongMaterial, getLoaders } from '../utils/M
 
 export class MJCFAdapter {
     /**
+     * Process include tags in MJCF XML
+     * Replaces <include file="path"/> with the content of the referenced file
+     * @param {string} xmlContent - MJCF XML content
+     * @param {Map} fileMap - File map for loading included files
+     * @param {string} basePath - Base path for resolving relative paths
+     * @returns {Promise<string>} Processed XML content
+     */
+    static async processIncludes(xmlContent, fileMap = null, basePath = null) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlContent, 'text/xml');
+
+        // Check for parse errors
+        const parseError = doc.querySelector('parsererror');
+        if (parseError) {
+            // If there's a parse error, return original content
+            console.warn('Initial XML parse error, skipping include processing:', parseError.textContent);
+            return xmlContent;
+        }
+
+        // Find all include elements
+        const includes = doc.querySelectorAll('include');
+
+        if (includes.length === 0) {
+            return xmlContent;
+        }
+
+        console.log(`Processing ${includes.length} include tag(s)...`);
+
+        // Process each include tag
+        for (const includeEl of includes) {
+            const filePath = includeEl.getAttribute('file');
+
+            if (!filePath) {
+                console.warn('Include tag missing file attribute');
+                includeEl.remove();
+                continue;
+            }
+
+            // Try to find the included file in fileMap
+            let includedContent = null;
+
+            if (fileMap) {
+                // Try different path variations
+                const pathVariations = [
+                    filePath,
+                    basePath ? basePath + '/' + filePath : filePath,
+                    filePath.startsWith('/') ? filePath : '/' + filePath
+                ];
+
+                for (const path of pathVariations) {
+                    // Try exact match first
+                    if (fileMap.has(path)) {
+                        const file = fileMap.get(path);
+                        try {
+                            includedContent = await file.text();
+                            console.log(`Found included file: ${path}`);
+                            break;
+                        } catch (e) {
+                            console.warn(`Failed to read included file ${path}:`, e);
+                        }
+                    }
+
+                    // Try case-insensitive match
+                    for (const [key, value] of fileMap) {
+                        if (key.toLowerCase() === path.toLowerCase()) {
+                            try {
+                                includedContent = await value.text();
+                                console.log(`Found included file (case-insensitive): ${key}`);
+                                break;
+                            } catch (e) {
+                                console.warn(`Failed to read included file ${key}:`, e);
+                            }
+                        }
+                    }
+                    if (includedContent) break;
+                }
+            }
+
+            if (!includedContent) {
+                console.warn(`Could not find included file: ${filePath}`);
+                includeEl.remove();
+                continue;
+            }
+
+            // Parse the included content
+            const includedDoc = parser.parseFromString(includedContent, 'text/xml');
+            const includedParseError = includedDoc.querySelector('parsererror');
+
+            if (includedParseError) {
+                console.warn(`Failed to parse included file ${filePath}:`, includedParseError.textContent);
+                includeEl.remove();
+                continue;
+            }
+
+            // Get the mujoco root element from included file
+            const includedRoot = includedDoc.querySelector('mujoco');
+
+            if (!includedRoot) {
+                console.warn(`Included file ${filePath} has no mujoco root element`);
+                includeEl.remove();
+                continue;
+            }
+
+            // Move all child elements from included mujoco to current document
+            // Insert them before the include element
+            const childNodes = Array.from(includedRoot.childNodes);
+
+            for (const child of childNodes) {
+                // Skip text nodes and comment nodes
+                if (child.nodeType === Node.TEXT_NODE ||
+                    (child.nodeType === Node.COMMENT_NODE) ||
+                    (child.nodeType === Node.PROCESSING_INSTRUCTION_NODE)) {
+                    continue;
+                }
+
+                // Clone the node to avoid removing from included doc
+                const importedNode = doc.importNode(child, true);
+
+                // Insert before the include element
+                includeEl.parentNode.insertBefore(importedNode, includeEl);
+            }
+
+            console.log(`Successfully included content from: ${filePath}`);
+
+            // Remove the include element
+            includeEl.remove();
+        }
+
+        // Serialize the modified document back to string
+        const serializer = new XMLSerializer();
+        return serializer.serializeToString(doc);
+    }
+
+    /**
      * Parse MJCF XML content and convert to unified model
      * @param {string} xmlContent - MJCF XML content
      * @param {Map} fileMap - File map (optional), for loading mesh files
+     * @param {string} basePath - Base path for resolving relative include paths (optional)
      * @returns {Promise<UnifiedRobotModel>}
      */
-    static async parse(xmlContent, fileMap = null) {
+    static async parse(xmlContent, fileMap = null, basePath = null) {
+        // Process include tags first
+        const processedContent = await this.processIncludes(xmlContent, fileMap, basePath);
+
         const parser = new DOMParser();
-        const doc = parser.parseFromString(xmlContent, 'text/xml');
+        const doc = parser.parseFromString(processedContent, 'text/xml');
 
         // Check parse errors
         const parseError = doc.querySelector('parsererror');
@@ -26,14 +164,16 @@ export class MJCFAdapter {
         const model = new UnifiedRobotModel();
         model.name = 'mujoco_model';
 
+        // Parse default values and class definitions in default tags first
+        // (needed for mesh scale inheritance)
+        const { classDefaults, rootDefaults } = this.parseDefaults(doc);
+
         // Parse mesh definitions in asset tags (build mesh name to file path mapping)
-        const meshMap = this.parseAssets(doc);
+        // Pass classDefaults and rootDefaults to inherit mesh scale
+        const meshMap = this.parseAssets(doc, classDefaults, rootDefaults);
 
         // Parse material definitions in material tags
         const materialMap = this.parseMaterials(doc);
-
-        // Parse default values and class definitions in default tags
-        const defaultsMap = this.parseDefaults(doc);
 
         // Get worldbody (root node)
         const worldbody = doc.querySelector('worldbody');
@@ -50,17 +190,27 @@ export class MJCFAdapter {
             const seenMeshes = new Set();
 
             worldbodyGeoms.forEach((geomEl, geomIndex) => {
+                // Get inherited properties from default class
+                const inheritedProps = this.getGeomInheritedProperties(geomEl, classDefaults, rootDefaults);
+
                 const group = geomEl.getAttribute('group');
-                const groupNum = group ? parseInt(group) : 0;
+                // Use inherited group if not explicitly defined
+                const groupNum = group !== null ? parseInt(group) : 
+                    (inheritedProps.group !== null ? inheritedProps.group : 0);
                 const geomName = (geomEl.getAttribute('name') || '').toLowerCase();
-                const hasRgba = geomEl.hasAttribute('rgba');
+                const hasRgba = geomEl.hasAttribute('rgba') || inheritedProps.rgba !== null;
                 const meshRef = geomEl.getAttribute('mesh');
+                
+                // Use inherited contype/conaffinity if not explicitly defined
                 const contype = geomEl.getAttribute('contype');
                 const conaffinity = geomEl.getAttribute('conaffinity');
                 const density = geomEl.getAttribute('density');
-                const contypeNum = contype !== null ? parseInt(contype) : null;
-                const conaffinityNum = conaffinity !== null ? parseInt(conaffinity) : null;
-                const densityNum = density !== null ? parseFloat(density) : null;
+                const contypeNum = contype !== null ? parseInt(contype) : 
+                    (inheritedProps.contype !== null ? inheritedProps.contype : null);
+                const conaffinityNum = conaffinity !== null ? parseInt(conaffinity) : 
+                    (inheritedProps.conaffinity !== null ? inheritedProps.conaffinity : null);
+                const densityNum = density !== null ? parseFloat(density) : 
+                    (inheritedProps.density !== null ? inheritedProps.density : null);
 
                 // Determine if collision or visual (same logic as in parseBodies)
                 let isCollisionGeom = false;
@@ -69,8 +219,12 @@ export class MJCFAdapter {
                 } else {
                     if (contypeNum === 0 && conaffinityNum === 0) {
                         isCollisionGeom = false;
-                    } else if (groupNum === 2) {
+                    } else if (groupNum === 3) {
+                        // group=3 is collision in MuJoCo convention
                         isCollisionGeom = true;
+                    } else if (groupNum === 2 || groupNum === 1) {
+                        // group=1,2 are visual
+                        isCollisionGeom = false;
                     } else if (geomName.includes('collision')) {
                         isCollisionGeom = true;
                     } else if (seenMeshes.has(meshRef)) {
@@ -105,9 +259,9 @@ export class MJCFAdapter {
                         visual.name = geomEl.getAttribute('name') || `worldbody_geom_${geomIndex}`;
                         visual.origin = this.parseOrigin(geomEl);
 
-                        // Parse rgba
+                        // Parse rgba (priority: explicit > inherited)
                         let rgba = null;
-                        if (hasRgba) {
+                        if (geomEl.hasAttribute('rgba')) {
                             const rgbaStr = geomEl.getAttribute('rgba');
                             const rgbaVals = rgbaStr.split(' ').map(parseFloat);
                             if (rgbaVals.length >= 3) {
@@ -118,6 +272,8 @@ export class MJCFAdapter {
                                     a: rgbaVals.length >= 4 ? rgbaVals[3] : 1.0
                                 };
                             }
+                        } else if (inheritedProps.rgba) {
+                            rgba = inheritedProps.rgba;
                         }
 
                         visual.userData = {
@@ -138,12 +294,12 @@ export class MJCFAdapter {
             }
         }
 
-        // Parse all bodies (links), pass meshMap and materialMap
+        // Parse all bodies (links), pass meshMap, materialMap, classDefaults and rootDefaults
         const bodyMap = new Map();
-        this.parseBodies(worldbody, null, bodyMap, model, null, meshMap, null, materialMap);
+        this.parseBodies(worldbody, null, bodyMap, model, null, meshMap, null, materialMap, classDefaults, rootDefaults);
 
         // Parse all joints
-        this.parseJoints(worldbody, bodyMap, model, null, defaultsMap);
+        this.parseJoints(worldbody, bodyMap, model, null, classDefaults);
 
         // Parse equality constraints (closed-chain constraints for parallel mechanisms)
         this.parseEquality(doc, model);
@@ -173,10 +329,12 @@ export class MJCFAdapter {
     /**
      * Parse mesh definitions in asset tags
      * @param {Document} doc - XML document
+     * @param {Map} classDefaults - Class default properties map (optional)
+     * @param {object} rootDefaults - Root default properties (optional)
      * @returns {Map<string, object>} Mapping from mesh names to mesh data
-     * Mesh data can be: { type: 'file', path: string } or { type: 'vertex', vertices: Float32Array, scale: [x,y,z] }
+     * Mesh data can be: { type: 'file', path: string, scale: [x,y,z] } or { type: 'vertex', vertices: Float32Array, scale: [x,y,z] }
      */
-    static parseAssets(doc) {
+    static parseAssets(doc, classDefaults = null, rootDefaults = null) {
         const meshMap = new Map();
         const asset = doc.querySelector('asset');
         if (!asset) {
@@ -189,6 +347,29 @@ export class MJCFAdapter {
             const file = meshEl.getAttribute('file');
             const vertex = meshEl.getAttribute('vertex');
             const scale = meshEl.getAttribute('scale');
+            const meshClass = meshEl.getAttribute('class');
+
+            // Parse scale (priority: direct attribute > class inheritance > root defaults > [1,1,1])
+            let scaleVec = [1, 1, 1];
+            
+            // First check direct scale attribute
+            if (scale) {
+                const scaleValues = scale.trim().split(/\s+/).map(parseFloat);
+                if (scaleValues.length === 1) {
+                    scaleVec = [scaleValues[0], scaleValues[0], scaleValues[0]];
+                } else if (scaleValues.length === 3) {
+                    scaleVec = scaleValues;
+                }
+            } else if (meshClass && classDefaults && classDefaults.has(meshClass)) {
+                // Try to inherit scale from class defaults
+                const classDefault = classDefaults.get(meshClass);
+                if (classDefault.mesh && classDefault.mesh.scale) {
+                    scaleVec = classDefault.mesh.scale;
+                }
+            } else if (rootDefaults && rootDefaults.mesh && rootDefaults.mesh.scale) {
+                // Fall back to root defaults (e.g., robotis_op3)
+                scaleVec = rootDefaults.mesh.scale;
+            }
 
             // If has vertex attribute, it's an inline-defined mesh
             if (vertex) {
@@ -199,17 +380,6 @@ export class MJCFAdapter {
                 // Parse vertex data
                 const vertexValues = vertex.trim().split(/\s+/).map(parseFloat);
                 const vertices = new Float32Array(vertexValues);
-
-                // Parse scale
-                let scaleVec = [1, 1, 1];
-                if (scale) {
-                    const scaleValues = scale.trim().split(/\s+/).map(parseFloat);
-                    if (scaleValues.length === 1) {
-                        scaleVec = [scaleValues[0], scaleValues[0], scaleValues[0]];
-                    } else if (scaleValues.length === 3) {
-                        scaleVec = scaleValues;
-                    }
-                }
 
                 meshMap.set(name, {
                     type: 'vertex',
@@ -228,7 +398,8 @@ export class MJCFAdapter {
 
                 meshMap.set(name, {
                     type: 'file',
-                    path: file
+                    path: file,
+                    scale: scaleVec
                 });
             } else {
                 console.warn('MJCF mesh element missing file or vertex attribute, skipping');
@@ -293,10 +464,11 @@ export class MJCFAdapter {
     /**
      * Parse default values and class definitions in default tags
      * @param {Document} doc - XML document
-     * @returns {Map<string, object>} Mapping from class names to default properties
+     * @returns {object} Object containing classDefaults Map and rootDefaults object
      */
     static parseDefaults(doc) {
-        const defaultsMap = new Map();
+        const classDefaults = new Map();
+        let rootDefaults = {};
 
         // Recursively parse default tags
         const parseDefaultElement = (defaultEl, parentDefaults = {}) => {
@@ -304,6 +476,25 @@ export class MJCFAdapter {
 
             // Start from parent defaults, deep copy to avoid reference issues
             const defaults = JSON.parse(JSON.stringify(parentDefaults || {}));
+
+            // Parse mesh default values
+            const meshEl = defaultEl.querySelector(':scope > mesh');
+            if (meshEl) {
+                if (!defaults.mesh) {
+                    defaults.mesh = {};
+                }
+
+                // Parse scale
+                const scale = meshEl.getAttribute('scale');
+                if (scale) {
+                    const scaleVals = scale.trim().split(/\s+/).map(parseFloat);
+                    if (scaleVals.length === 1) {
+                        defaults.mesh.scale = [scaleVals[0], scaleVals[0], scaleVals[0]];
+                    } else if (scaleVals.length === 3) {
+                        defaults.mesh.scale = scaleVals;
+                    }
+                }
+            }
 
             // Parse joint default values
             const jointEl = defaultEl.querySelector(':scope > joint');
@@ -334,9 +525,71 @@ export class MJCFAdapter {
                 }
             }
 
-            // If has class name, save to map
+            // Parse geom default values
+            const geomEl = defaultEl.querySelector(':scope > geom');
+            if (geomEl) {
+                if (!defaults.geom) {
+                    defaults.geom = {};
+                }
+
+                // Parse contype
+                const contype = geomEl.getAttribute('contype');
+                if (contype !== null) {
+                    defaults.geom.contype = parseInt(contype);
+                }
+
+                // Parse conaffinity
+                const conaffinity = geomEl.getAttribute('conaffinity');
+                if (conaffinity !== null) {
+                    defaults.geom.conaffinity = parseInt(conaffinity);
+                }
+
+                // Parse group
+                const group = geomEl.getAttribute('group');
+                if (group !== null) {
+                    defaults.geom.group = parseInt(group);
+                }
+
+                // Parse rgba
+                const rgba = geomEl.getAttribute('rgba');
+                if (rgba) {
+                    const rgbaVals = rgba.split(' ').map(parseFloat);
+                    if (rgbaVals.length >= 3) {
+                        defaults.geom.rgba = {
+                            r: rgbaVals[0],
+                            g: rgbaVals[1],
+                            b: rgbaVals[2],
+                            a: rgbaVals.length >= 4 ? rgbaVals[3] : 1.0
+                        };
+                    }
+                }
+
+                // Parse material
+                const material = geomEl.getAttribute('material');
+                if (material) {
+                    defaults.geom.material = material;
+                }
+
+                // Parse type
+                const type = geomEl.getAttribute('type');
+                if (type) {
+                    defaults.geom.type = type;
+                }
+
+                // Parse density
+                const density = geomEl.getAttribute('density');
+                if (density !== null) {
+                    defaults.geom.density = parseFloat(density);
+                }
+            }
+
+            // If has class name, save to class map
             if (className) {
-                defaultsMap.set(className, defaults);
+                classDefaults.set(className, defaults);
+            } else {
+                // No class name means this is a root default (inherits to all)
+                // Store the final computed defaults as rootDefaults
+                Object.assign(rootDefaults, defaults);
             }
 
             // Recursively process nested default tags
@@ -347,18 +600,53 @@ export class MJCFAdapter {
         };
 
         // Start parsing from root default tags
-        const rootDefaults = doc.querySelectorAll('mujoco > default');
-        rootDefaults.forEach(defaultEl => {
+        const rootDefaultElements = doc.querySelectorAll('mujoco > default');
+        rootDefaultElements.forEach(defaultEl => {
             parseDefaultElement(defaultEl);
         });
 
-        return defaultsMap;
+        return { classDefaults, rootDefaults };
+    }
+
+    /**
+     * Get inherited geom properties from default class
+     * @param {Element} geomEl - geom element
+     * @param {Map} classDefaults - Class default properties map
+     * @param {object} rootDefaults - Root default properties
+     * @returns {object} Inherited properties object
+     */
+    static getGeomInheritedProperties(geomEl, classDefaults, rootDefaults) {
+        const inherited = {
+            contype: null,
+            conaffinity: null,
+            group: null,
+            rgba: null,
+            material: null,
+            type: null,
+            density: null
+        };
+
+        // First apply root defaults
+        if (rootDefaults && rootDefaults.geom) {
+            Object.assign(inherited, rootDefaults.geom);
+        }
+
+        // Then apply class defaults (if geom has class attribute)
+        const className = geomEl.getAttribute('class');
+        if (className && classDefaults && classDefaults.has(className)) {
+            const classDefault = classDefaults.get(className);
+            if (classDefault.geom) {
+                Object.assign(inherited, classDefault.geom);
+            }
+        }
+
+        return inherited;
     }
 
     /**
      * Recursively parse body elements, record parent-child relationships
      */
-    static parseBodies(element, parentName, bodyMap, model, parentLinkRef = null, meshMap = null, stats = null, materialMap = null) {
+    static parseBodies(element, parentName, bodyMap, model, parentLinkRef = null, meshMap = null, stats = null, materialMap = null, classDefaults = null, rootDefaults = null) {
         // Initialize stats object (only on root call)
         if (!stats) {
             stats = { totalGeoms: 0, skippedCollisionGeoms: 0, visualGeoms: 0 };
@@ -386,20 +674,29 @@ export class MJCFAdapter {
             geoms.forEach((geomEl, geomIndex) => {
                 stats.totalGeoms++;
 
-                const group = geomEl.getAttribute('group');
-                const groupNum = group ? parseInt(group) : 0;
-                const geomName = (geomEl.getAttribute('name') || '').toLowerCase();
-                const hasRgba = geomEl.hasAttribute('rgba');
-                const meshRef = geomEl.getAttribute('mesh');
-                const geomType = geomEl.getAttribute('type') || (meshRef ? 'mesh' : 'box');
+                // Get inherited properties from default class
+                const inheritedProps = this.getGeomInheritedProperties(geomEl, classDefaults, rootDefaults);
 
-                // Check collision-related attributes
+                const group = geomEl.getAttribute('group');
+                // Use inherited group if not explicitly defined
+                const groupNum = group !== null ? parseInt(group) : 
+                    (inheritedProps.group !== null ? inheritedProps.group : 0);
+                const geomName = (geomEl.getAttribute('name') || '').toLowerCase();
+                const hasRgba = geomEl.hasAttribute('rgba') || inheritedProps.rgba !== null;
+                const meshRef = geomEl.getAttribute('mesh');
+                // Use inherited type if not explicitly defined
+                const geomType = geomEl.getAttribute('type') || inheritedProps.type || (meshRef ? 'mesh' : 'box');
+
+                // Check collision-related attributes (use inherited if not explicitly defined)
                 const contype = geomEl.getAttribute('contype');
                 const conaffinity = geomEl.getAttribute('conaffinity');
                 const density = geomEl.getAttribute('density');
-                const contypeNum = contype !== null ? parseInt(contype) : null;
-                const conaffinityNum = conaffinity !== null ? parseInt(conaffinity) : null;
-                const densityNum = density !== null ? parseFloat(density) : null;
+                const contypeNum = contype !== null ? parseInt(contype) : 
+                    (inheritedProps.contype !== null ? inheritedProps.contype : null);
+                const conaffinityNum = conaffinity !== null ? parseInt(conaffinity) : 
+                    (inheritedProps.conaffinity !== null ? inheritedProps.conaffinity : null);
+                const densityNum = density !== null ? parseFloat(density) : 
+                    (inheritedProps.density !== null ? inheritedProps.density : null);
 
                 // Determine geom type: visual or collision
                 let isCollisionGeom = false;
@@ -418,9 +715,12 @@ export class MJCFAdapter {
                         // This is explicitly marked as visual-only (no collision)
                         isCollisionGeom = false;
                     }
-                    // Strategy 2: group=2 explicitly marked as collision
-                    else if (groupNum === 2) {
+                    // Strategy 2: group=2 is visual, group=3 is collision
+                    // MuJoCo convention: group 0=default, 1=visual1, 2=visual2, 3=collision
+                    else if (groupNum === 3) {
                         isCollisionGeom = true;
+                    } else if (groupNum === 2 || groupNum === 1) {
+                        isCollisionGeom = false;
                     }
                     // Strategy 3: Name contains collision (indicates collision-specific)
                     else if (geomName.includes('collision')) {
@@ -477,12 +777,12 @@ export class MJCFAdapter {
                         visual.name = geomEl.getAttribute('name') || `geom_${geomIndex}`;
                         visual.origin = this.parseOrigin(geomEl);
 
-                        // Parse MJCF rgba color (priority: geom rgba > material rgba)
+                        // Parse MJCF rgba color (priority: geom rgba > inherited rgba > material rgba)
                         let rgba = null;
                         let materialName = null;
 
-                        // 1. First check geom's own rgba
-                        if (hasRgba) {
+                        // 1. First check geom's own rgba, then inherited rgba
+                        if (geomEl.hasAttribute('rgba')) {
                             const rgbaStr = geomEl.getAttribute('rgba');
                             const rgbaVals = rgbaStr.split(' ').map(parseFloat);
                             if (rgbaVals.length >= 3) {
@@ -495,9 +795,14 @@ export class MJCFAdapter {
                             }
                         }
 
-                        // 2. If geom has no rgba, check if references material
+                        // 2. If geom has no explicit rgba, check inherited rgba
+                        if (!rgba && inheritedProps.rgba) {
+                            rgba = inheritedProps.rgba;
+                        }
+
+                        // 3. If still no rgba, check if references material (explicit or inherited)
                         if (!rgba && materialMap) {
-                            materialName = geomEl.getAttribute('material');
+                            materialName = geomEl.getAttribute('material') || inheritedProps.material;
                             if (materialName && materialMap.has(materialName)) {
                                 const mat = materialMap.get(materialName);
                                 if (mat.rgba) {
@@ -529,7 +834,7 @@ export class MJCFAdapter {
             bodyMap.set(linkName, { link, element: bodyEl, parentName });
 
             // Recursively parse child bodies
-            this.parseBodies(bodyEl, linkName, bodyMap, model, link, meshMap, stats, materialMap);
+            this.parseBodies(bodyEl, linkName, bodyMap, model, link, meshMap, stats, materialMap, classDefaults, rootDefaults);
         });
     }
 
@@ -576,16 +881,47 @@ export class MJCFAdapter {
                 break;
 
             case 'cylinder':
+            case 'capsule':
+                // Handle fromto attribute for capsule/cylinder
+                const fromto = geomEl.getAttribute('fromto');
                 const radiusAttr = geomEl.getAttribute('size');
-                if (radiusAttr) {
+                
+                if (fromto) {
+                    const ft = fromto.split(' ').map(parseFloat);
+                    if (ft.length >= 6) {
+                        const p1 = new THREE.Vector3(ft[0], ft[1], ft[2]);
+                        const p2 = new THREE.Vector3(ft[3], ft[4], ft[5]);
+                        const center = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+                        const height = p1.distanceTo(p2);
+                        
+                        // Calculate rotation to align cylinder/capsule with the fromto vector
+                        const direction = new THREE.Vector3().subVectors(p2, p1).normalize();
+                        const defaultDir = new THREE.Vector3(0, 1, 0); // Default cylinder axis is Y
+                        const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultDir, direction);
+                        const euler = new THREE.Euler().setFromQuaternion(quaternion);
+                        
+                        // Store fromto data
+                        geometry.fromto = {
+                            p1: [ft[0], ft[1], ft[2]],
+                            p2: [ft[3], ft[4], ft[5]],
+                            center: [center.x, center.y, center.z],
+                            height: height,
+                            rpy: [euler.x, euler.y, euler.z]
+                        };
+                        
+                        // Parse radius - for fromto, size is just radius
+                        const radiusVal = parseFloat(radiusAttr || '0.01');
+                        geometry.size = { radius: radiusVal, height: height };
+                    }
+                } else if (radiusAttr) {
                     const radii = radiusAttr.split(' ').map(parseFloat);
-                    // MJCF cylinder size is [radius, half-height], height needs to be multiplied by 2
+                    // MJCF cylinder/capsule size is [radius, half-height], height needs to be multiplied by 2
                     geometry.size = {
                         radius: radii[0] || 0.1,
                         height: (radii[1] || 0.1) * 2  // Multiply by 2 to get full height
                     };
                 } else {
-                    geometry.size = { radius: 0.1, height: 0.2 };
+                    geometry.size = { radius: 0.01, height: 0.1 };
                 }
                 break;
 
@@ -597,6 +933,10 @@ export class MJCFAdapter {
                     if (meshData.type === 'file') {
                         // External file mesh
                         geometry.filename = meshData.path;
+                        // Apply mesh scale from asset definition (class inheritance)
+                        if (meshData.scale) {
+                            geometry.meshScale = meshData.scale;
+                        }
                     } else if (meshData.type === 'vertex') {
                         // Inline vertex mesh, store vertex data
                         geometry.inlineVertices = meshData.vertices;
@@ -657,6 +997,15 @@ export class MJCFAdapter {
      * Convert quaternion to Euler angles (simplified version)
      */
     static quaternionToEuler(w, x, y, z) {
+        // Normalize quaternion first (MJCF may use non-normalized quaternions)
+        const norm = Math.sqrt(w * w + x * x + y * y + z * z);
+        if (norm > 0) {
+            w = w / norm;
+            x = x / norm;
+            y = y / norm;
+            z = z / norm;
+        }
+
         // Simplified conversion (using standard formula)
         const sinr_cosp = 2 * (w * x + y * z);
         const cosr_cosp = 1 - 2 * (x * x + y * y);
@@ -1014,6 +1363,37 @@ export class MJCFAdapter {
             model.addJoint(joint);
         });
 
+        // Process freejoint elements (free-floating joints)
+        const freejoints = element.querySelectorAll(':scope > freejoint');
+        freejoints.forEach((freejointEl, index) => {
+            const freejointName = freejointEl.getAttribute('name') || `freejoint_${model.joints.size}`;
+            
+            // Create a 'free' type joint (maps to continuous/floating in URDF terms)
+            const joint = new Joint(freejointName, 'continuous');
+            joint.type = 'free'; // Mark as free joint type
+            
+            // Get parent body
+            const currentBody = freejointEl.parentElement;
+            const currentBodyName = currentBody.getAttribute('name');
+            
+            // Parent is worldbody for freejoints
+            if (parentBodyName) {
+                joint.parent = parentBodyName;
+            } else {
+                joint.parent = 'worldbody';
+            }
+            
+            // Child is current body
+            if (currentBodyName) {
+                joint.child = currentBodyName;
+            }
+            
+            // Parse origin
+            joint.origin = this.parseOrigin(freejointEl);
+            
+            model.addJoint(joint);
+        });
+
         // Recursively process child bodies
         // Find direct child bodies (use :scope > body to ensure only direct children are selected)
         const bodies = element.querySelectorAll(':scope > body');
@@ -1198,9 +1578,22 @@ export class MJCFAdapter {
             for (const visual of link.visuals) {
                 const mesh = await this.createGeometryMesh(visual.geometry, fileMap, meshCache);
                 if (mesh) {
-                    // Apply origin transformation (temporarily don't convert coordinate system)
-                    mesh.position.set(...visual.origin.xyz);
-                    mesh.rotation.set(...visual.origin.rpy);
+                    // Apply origin transformation
+                    // Check if this geom has fromto data (for capsule/cylinder)
+                    if (visual.geometry && visual.geometry.fromto) {
+                        // Use fromto center position
+                        mesh.position.set(...visual.geometry.fromto.center);
+                        // Apply fromto rotation plus any explicit rotation
+                        const fromtoRpy = visual.geometry.fromto.rpy;
+                        mesh.rotation.set(
+                            fromtoRpy[0] + visual.origin.rpy[0],
+                            fromtoRpy[1] + visual.origin.rpy[1],
+                            fromtoRpy[2] + visual.origin.rpy[2]
+                        );
+                    } else {
+                        mesh.position.set(...visual.origin.xyz);
+                        mesh.rotation.set(...visual.origin.rpy);
+                    }
                     mesh.name = visual.name || 'visual';
 
                     // If MJCF defines rgba color, apply to mesh
@@ -1313,9 +1706,22 @@ export class MJCFAdapter {
             for (const collision of link.collisions) {
                 const mesh = await this.createGeometryMesh(collision.geometry, fileMap, meshCache);
                 if (mesh) {
-                    // Apply origin transformation (temporarily don't convert coordinate system)
-                    mesh.position.set(...collision.origin.xyz);
-                    mesh.rotation.set(...collision.origin.rpy);
+                    // Apply origin transformation
+                    // Check if this geom has fromto data (for capsule/cylinder)
+                    if (collision.geometry && collision.geometry.fromto) {
+                        // Use fromto center position
+                        mesh.position.set(...collision.geometry.fromto.center);
+                        // Apply fromto rotation plus any explicit rotation
+                        const fromtoRpy = collision.geometry.fromto.rpy;
+                        mesh.rotation.set(
+                            fromtoRpy[0] + collision.origin.rpy[0],
+                            fromtoRpy[1] + collision.origin.rpy[1],
+                            fromtoRpy[2] + collision.origin.rpy[2]
+                        );
+                    } else {
+                        mesh.position.set(...collision.origin.xyz);
+                        mesh.rotation.set(...collision.origin.rpy);
+                    }
                     mesh.name = collision.name || 'collision';
 
                     // Create collision body container (similar to URDF handling)
@@ -1500,9 +1906,33 @@ export class MJCFAdapter {
                         geometry.size.height,
                         32
                     );
-                    // MJCF cylinder is along Z-axis, need to rotate 90 degrees to align with X-axis
-                    // (because after applying origin transformation, it will be rotated again to correct direction)
+                    // MJCF cylinder defaults to Z-axis, Three.js Cylinder is Y-axis aligned
+                    // Rotate to align with Z-axis
                     threeGeometry.rotateX(Math.PI / 2);
+                    
+                    // If fromto is defined, the mesh will be positioned and rotated by fromto data
+                    // in the calling code
+                }
+                break;
+
+            case 'capsule':
+                if (geometry.size) {
+                    // Three.js doesn't have native CapsuleGeometry in older versions
+                    // Use a combination of cylinder and spheres, or CapsuleGeometry if available
+                    const { radius, height } = geometry.size;
+                    
+                    // Check if CapsuleGeometry is available (Three.js r133+)
+                    if (typeof THREE.CapsuleGeometry !== 'undefined') {
+                        threeGeometry = new THREE.CapsuleGeometry(radius, height, 4, 16);
+                        // CapsuleGeometry is Y-axis aligned, MJCF capsule is Z-axis aligned
+                        threeGeometry.rotateX(Math.PI / 2);
+                    } else {
+                        // Fallback: create a cylinder with sphere caps
+                        const cylinderHeight = Math.max(0, height - 2 * radius);
+                        const cylinder = new THREE.CylinderGeometry(radius, radius, cylinderHeight, 16);
+                        cylinder.rotateX(Math.PI / 2); // Align with Z-axis
+                        threeGeometry = cylinder;
+                    }
                 }
                 break;
 
@@ -1528,6 +1958,12 @@ export class MJCFAdapter {
                     if (cachedMesh.isGroup || cachedMesh.isObject3D) {
                         threeGeometry = cachedMesh.clone(true); // Deep clone (including materials)
 
+                        // Apply mesh scale from MJCF class inheritance (e.g., scale="0.001 0.001 0.001")
+                        if (geometry.meshScale) {
+                            const [sx, sy, sz] = geometry.meshScale;
+                            threeGeometry.scale.set(sx, sy, sz);
+                        }
+
                         // Check cloned mesh material situation
                         let meshCount = 0;
                         let materialCount = 0;
@@ -1544,8 +1980,15 @@ export class MJCFAdapter {
                         ensureMeshHasPhongMaterial(threeGeometry);
                         return threeGeometry;
                     }
-                    // If BufferGeometry, can be shared (geometry can be used by multiple meshes)
-                    threeGeometry = cachedMesh;
+                    // If BufferGeometry (e.g., STL), create a mesh and apply scale
+                    if (geometry.meshScale) {
+                        const [sx, sy, sz] = geometry.meshScale;
+                        // Scale the geometry directly
+                        threeGeometry = cachedMesh.clone();
+                        threeGeometry.scale(sx, sy, sz);
+                    } else {
+                        threeGeometry = cachedMesh;
+                    }
                 } else {
                     console.warn('⚠️ Mesh type geometry missing filename');
                     return null;

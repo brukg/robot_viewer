@@ -136,7 +136,7 @@ export class FileTreeView {
         input.style.display = 'none';
 
         if (!isFolder) {
-            input.setAttribute('accept', '.urdf,.xml,.dae,.stl,.obj,.collada,.usd,.usda,.usdc,.usdz');
+            input.setAttribute('accept', '.urdf,.xacro,.xml,.dae,.stl,.obj,.collada,.usd,.usda,.usdc,.usdz');
         }
 
         input.addEventListener('change', (e) => {
@@ -286,7 +286,7 @@ export class FileTreeView {
 
         fileMap.forEach((file, path) => {
             const ext = file.name.split('.').pop().toLowerCase();
-            const supportedExtensions = ['urdf', 'xml', 'dae', 'stl', 'obj', 'collada', 'usd', 'usda', 'usdc'];
+            const supportedExtensions = ['urdf', 'xacro', 'xml', 'dae', 'stl', 'obj', 'collada', 'usd', 'usda', 'usdc'];
 
             if (!supportedExtensions.includes(ext)) return;
 
@@ -391,7 +391,7 @@ export class FileTreeView {
      */
     renderFiles(files, container) {
         files.sort((a, b) => {
-            const modelExts = ['urdf', 'xml', 'usd', 'usda', 'usdc'];
+            const modelExts = ['urdf', 'xacro', 'xml', 'usd', 'usda', 'usdc'];
             const aIsModel = modelExts.includes(a.ext);
             const bIsModel = modelExts.includes(b.ext);
 
@@ -438,10 +438,10 @@ export class FileTreeView {
         leftContent.appendChild(nameSpan);
         header.appendChild(leftContent);
 
-        // Add type label (e.g., URDF, STL, etc.)
+        // Add type label (e.g., URDF, XACRO, STL, etc.)
         if (name && name.includes('.')) {
             const extUpper = name.split('.').pop().toUpperCase();
-            const displayExtensions = ['URDF', 'XML', 'DAE', 'STL', 'OBJ', 'USD', 'USDA', 'USDC', 'USDZ'];
+            const displayExtensions = ['URDF', 'XACRO', 'XML', 'DAE', 'STL', 'OBJ', 'USD', 'USDA', 'USDC', 'USDZ'];
             if (displayExtensions.includes(extUpper)) {
                 const badge = document.createElement('span');
                 badge.className = 'type-badge';

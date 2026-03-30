@@ -4,7 +4,7 @@
 
 # Robot Viewer
 
-[![Version](https://img.shields.io/badge/version-v1.1.1-blue.svg)](https://github.com/fan-ziqi/robot_viewer)
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue.svg)](https://github.com/fan-ziqi/robot_viewer)
 [![License](https://img.shields.io/badge/license-Apache--2.0-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-web-orange.svg)](https://github.com/fan-ziqi/robot_viewer)
 [![JavaScript](https://img.shields.io/badge/language-JavaScript-f1e05a.svg)](https://github.com/fan-ziqi/robot_viewer)
@@ -20,7 +20,11 @@
 
 ## Key Features
 
-- **Format Support**: URDF, MJCF (Mujoco XML), USD (partial support)
+- **Format Support**:
+  - **URDF**: Unified Robot Description Format
+  - **Xacro**: ROS Xacro format with macro expansion and conditional logic support
+  - **MJCF**: Mujoco XML format
+  - **USD**: Universal Scene Description (partial support)
 - **Robot Types**: Serial robot structures (parallel robots not currently supported)
 - **Visualization Tools**: Visual/collision geometry, inertia tensors, center of mass, coordinate frames, joint axes, shadows, coordinate system orientation
 - **Interactive Controls**: Drag joints in real-time, adjust model poses
@@ -72,6 +76,7 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 Robot Viewer builds upon the excellent work of the open-source robotics community. This project integrates several powerful open-source projects:
 
 - **[urdf-loader](https://github.com/gkjohnson/urdf-loaders)** - Robust URDF loading for Three.js
+- **[xacro-parser](https://github.com/gkjohnson/xacro-parser)** - ROS Xacro file format parser for Javascript
 - **[mujoco_wasm](https://github.com/zalo/mujoco_wasm)** - MuJoCo physics engine compiled to WebAssembly
 - **[usd-viewer](https://github.com/needle-tools/usd-viewer)** - OpenUSD viewer with rich USDStage support
 - **[mechaverse](https://github.com/jurmy24/mechaverse)** - Universal 3D viewer for robot models, providing valuable design inspiration

@@ -37,6 +37,65 @@ class App {
         this.currentMJCFFile = null;
         this.currentMJCFModel = null;
         this.angleUnit = 'rad';
+        this.vscodeFileMap = new Map(); // Store VSCode files
+    }
+
+    /**
+     * Load model from VSCode extension
+     * @param {Object} fileInfo - File info from VSCode {name, path, content, directory}
+     */
+    async loadModelFromVSCode(fileInfo) {
+        try {
+            console.log('Loading model from VSCode:', fileInfo.name);
+
+            // Create a File-like object from the content
+            const blob = new Blob([fileInfo.content], { type: 'text/plain' });
+            const file = new File([blob], fileInfo.name, { type: 'text/plain' });
+
+            // Store file info for resolving relative paths
+            file.vscodeDirectory = fileInfo.directory;
+            file.vscodePath = fileInfo.path;
+
+            // Add to file map
+            this.fileHandler.fileMap.set(fileInfo.name, file);
+            this.fileHandler.fileMap.set(fileInfo.path, file);
+            this.vscodeFileMap.set(fileInfo.name, fileInfo);
+
+            // Load the model
+            await this.fileHandler.loadFile(file);
+
+            // Update file tree
+            const loadableFiles = [{
+                file: file,
+                name: fileInfo.name,
+                type: this.detectFileType(fileInfo.name),
+                path: fileInfo.path,
+                category: 'model',
+                ext: fileInfo.name.split('.').pop().toLowerCase()
+            }];
+
+            this.fileHandler.availableModels = loadableFiles;
+            if (this.fileTreeView) {
+                this.fileTreeView.updateFileTree(loadableFiles, this.fileHandler.fileMap);
+            }
+
+            vscodeAdapter.log(`Model loaded successfully: ${fileInfo.name}`);
+        } catch (error) {
+            console.error('Failed to load model from VSCode:', error);
+            vscodeAdapter.showError(`Failed to load model: ${error.message}`);
+        }
+    }
+
+    /**
+     * Detect file type from filename
+     */
+    detectFileType(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        if (['urdf', 'xacro'].includes(ext)) return 'urdf';
+        if (['mjcf', 'xml'].includes(ext)) return 'mjcf';
+        if (['usd', 'usda', 'usdc', 'usdz'].includes(ext)) return 'usd';
+        if (['obj', 'stl', 'dae', 'gltf', 'glb'].includes(ext)) return 'mesh';
+        return 'unknown';
     }
 
     /**
@@ -679,7 +738,7 @@ class App {
      */
     handleFileClick(fileInfo) {
         const ext = fileInfo.ext;
-        const modelExts = ['urdf', 'xml', 'usd', 'usda', 'usdc', 'usdz'];
+        const modelExts = ['urdf', 'xacro', 'xml', 'usd', 'usda', 'usdc', 'usdz'];
         const meshExts = ['dae', 'stl', 'obj', 'collada'];
 
         if (modelExts.includes(ext)) {

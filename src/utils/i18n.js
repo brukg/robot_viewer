@@ -51,7 +51,7 @@ export const translations = {
         // 帮助对话框
         'helpTitle': `Robot Viewer v${APP_VERSION}`,
         'about': '关于',
-        'aboutContent': 'Robot Viewer 是一个基于 Three.js 的网页端机器人模型 3D 查看器，提供直观的可视化界面，帮助您在浏览器中查看和分析机器人的结构、关节和物理属性，无需安装任何软件。<br><br>格式支持：URDF、MJCF、USD（部分支持）<br>机器人类型：串联机器人结构（暂不支持并联机器人）<br><br>由 <strong>范子琦</strong> 开发。',
+        'aboutContent': 'Robot Viewer 是一个基于 Three.js 的网页端机器人模型 3D 查看器，提供直观的可视化界面，帮助您在浏览器中查看和分析机器人的结构、关节和物理属性，无需安装任何软件。<br><br>格式支持：URDF、Xacro、MJCF、USD（部分支持）<br>机器人类型：串联机器人结构（暂不支持并联机器人）<br><br>由 <strong>范子琦</strong> 开发。',
         'projectHome': '项目主页',
         'email': '邮箱',
         'myGithub': '我的GitHub',
@@ -80,7 +80,7 @@ export const translations = {
         'clickToEditMin': '点击编辑下限',
         'clickToEditMax': '点击编辑上限',
         'dropHint': '拖拽机器人模型文件或文件夹到页面任意位置',
-        'dropHintSub': '支持 URDF, MJCF 格式<br>支持拖拽文件夹以加载mesh文件',
+        'dropHintSub': '支持 URDF, Xacro, MJCF 格式<br>支持拖拽文件夹以加载mesh文件',
         'graphHint': '拖动: 移动 | 滚轮: 缩放 | 右键: 隐藏/显示 | Ctrl+左键: 测量',
         'copyright': '© 2025 范子琦 版权所有。',
 
@@ -112,7 +112,7 @@ export const translations = {
         'loading': '正在加载',
         'unsupportedFormat': '不支持的文件格式',
         'loadFailed': '加载失败',
-        'noSupportedFiles': '未找到支持的文件（URDF, MJCF, DAE, STL, OBJ）',
+        'noSupportedFiles': '未找到支持的文件（URDF, Xacro, MJCF, DAE, STL, OBJ）',
         'loadSuccess': '模型加载成功',
         'cannotLoadMesh': '无法加载 mesh 文件',
 
@@ -174,7 +174,7 @@ export const translations = {
         // Help dialog
         'helpTitle': `Robot Viewer v${APP_VERSION}`,
         'about': 'About',
-        'aboutContent': 'Robot Viewer is a web-based 3D viewer for robot models and scenes. Built on top of Three.js, it provides an intuitive interface for visualizing, editing, and simulating robots directly in the browser without any installation required. This tool helps you visualize and analyze robot structures, joints, and physical properties.<br><br>Format Support: URDF, MJCF, USD (partial support)<br>Robot Types: Serial robot structures (parallel robots not currently supported)<br><br>Developed by <strong>Ziqi Fan</strong>.',
+        'aboutContent': 'Robot Viewer is a web-based 3D viewer for robot models and scenes. Built on top of Three.js, it provides an intuitive interface for visualizing, editing, and simulating robots directly in the browser without any installation required. This tool helps you visualize and analyze robot structures, joints, and physical properties.<br><br>Format Support: URDF, Xacro, MJCF, USD (partial support)<br>Robot Types: Serial robot structures (parallel robots not currently supported)<br><br>Developed by <strong>Ziqi Fan</strong>.',
         'projectHome': 'Project Home',
         'email': 'Email',
         'myGithub': 'My GitHub',
@@ -203,7 +203,7 @@ export const translations = {
         'clickToEditMin': 'Click to edit minimum',
         'clickToEditMax': 'Click to edit maximum',
         'dropHint': 'Drag and drop robot model files or folders anywhere',
-        'dropHintSub': 'Supports URDF, MJCF formats<br>Supports folder dragging to load mesh files',
+        'dropHintSub': 'Supports URDF, Xacro, MJCF formats<br>Supports folder dragging to load mesh files',
         'graphHint': 'Drag: Move | Scroll: Zoom | Right-click: Hide/Show | Ctrl+Click: Measure',
         'copyright': '© 2025 Ziqi Fan. All rights reserved.',
 
@@ -235,7 +235,7 @@ export const translations = {
         'loading': 'Loading',
         'unsupportedFormat': 'Unsupported file format',
         'loadFailed': 'Load failed',
-        'noSupportedFiles': 'No supported files found (URDF, MJCF, DAE, STL, OBJ)',
+        'noSupportedFiles': 'No supported files found (URDF, Xacro, MJCF, DAE, STL, OBJ)',
         'loadSuccess': 'Model loaded successfully',
         'cannotLoadMesh': 'Cannot load mesh file',
 

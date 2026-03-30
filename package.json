@@ -1,6 +1,6 @@
 {
   "name": "robot-viewer",
-  "version": "1.1.2",
+  "version": "1.2.1",
   "description": "Web-based robot model viewer supporting URDF, MJCF, and USD formats",
   "main": "index.html",
   "packageManager": "pnpm@9.0.0",
@@ -12,6 +12,7 @@
   "keywords": [
     "robot",
     "urdf",
+    "xacro",
     "mjcf",
     "usd",
     "three.js",
@@ -34,7 +35,8 @@
     "d3": "^7.9.0",
     "mujoco-js": "^0.0.7",
     "three": "^0.163.0",
-    "urdf-loader": "^0.12.5"
+    "urdf-loader": "^0.12.5",
+    "xacro-parser": "^0.3.11"
   },
   "devDependencies": {
     "terser": "^5.26.0",

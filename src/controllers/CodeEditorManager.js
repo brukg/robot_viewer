@@ -90,6 +90,7 @@ export class CodeEditorManager {
         const extensionMap = {
             'xml': 'urdf',  // Default XML files treated as URDF (may also be MJCF, but loader will auto-detect)
             'urdf': 'urdf',
+            'xacro': 'xacro',
             'mjcf': 'mjcf',
             'usd': 'usd',
             'usda': 'usd',

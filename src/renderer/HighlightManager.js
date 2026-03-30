@@ -388,8 +388,8 @@ export class HighlightManager {
             const orientationBlock =
             `Orientation (world):\n` +
             `- Quat: x=${quatX} y=${quatY} z=${quatZ} w=${quatW}\n` +
-            `- RPY (deg): r=${rollRad} p=${pitchRad} y=${yawRad}\n` +
-            `- RPY (rad): r=${rollDeg} p=${pitchDeg} y=${yawDeg}\n`;
+            `- RPY (rad): r=${rollRad} p=${pitchRad} y=${yawRad}\n` +
+            `- RPY (deg): r=${rollDeg} p=${pitchDeg} y=${yawDeg}\n`;
 
             linkPoseEl.textContent = positionBlock + orientationBlock;
             linkPoseEl.style.display = 'block';

@@ -190,7 +190,7 @@ export class FileHandler {
      */
     async findAllLoadableFiles(files) {
         const supportedExtensions = {
-            model: ['urdf', 'xml', 'usd', 'usda', 'usdc', 'usdz'],
+            model: ['urdf', 'xacro', 'xml', 'usd', 'usda', 'usdc', 'usdz'],
             mesh: ['dae', 'stl', 'obj', 'collada']
         };
         const loadableFiles = [];
@@ -280,6 +280,15 @@ export class FileHandler {
         try {
             const fileName = file.name.toLowerCase();
 
+            // Get the full path from fileMap
+            let fullPath = file.name;
+            for (const [path, f] of this.fileMap.entries()) {
+                if (f === file) {
+                    fullPath = path;
+                    break;
+                }
+            }
+
             // Handle USD format files (all USD formats use WASM)
             const isUSD = fileName.endsWith('.usd') || fileName.endsWith('.usda') ||
                          fileName.endsWith('.usdc') || fileName.endsWith('.usdz');
@@ -302,7 +311,7 @@ export class FileHandler {
                 const model = await ModelLoaderFactory.loadModel(
                     'usd',
                     null,
-                    file.name,
+                    fullPath,
                     this.fileMap,
                     file,
                     { usdViewerManager: this.usdViewerManager }
@@ -337,7 +346,7 @@ export class FileHandler {
             const model = await ModelLoaderFactory.loadModel(
                 fileType,
                 content,
-                file.name,
+                fullPath,  // Use full path instead of just file.name
                 this.fileMap,
                 file,
                 { usdViewerManager: this.usdViewerManager }

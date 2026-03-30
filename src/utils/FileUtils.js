@@ -65,6 +65,7 @@ export async function readDirectory(dirEntry, fileMap) {
 export function getFileTypeFromExtension(ext) {
     const typeMap = {
         'urdf': 'urdf',
+        'xacro': 'xacro',
         'xml': 'mjcf',
         'usd': 'usd',
         'usda': 'usd',
@@ -78,7 +79,7 @@ export function getFileTypeFromExtension(ext) {
  * Get file display type
  */
 export function getFileDisplayType(ext, fileName) {
-    const modelExts = ['urdf', 'xml', 'usd', 'usda', 'usdc', 'usdz'];
+    const modelExts = ['urdf', 'xacro', 'xml', 'usd', 'usda', 'usdc', 'usdz'];
     const meshExts = ['dae', 'stl', 'obj', 'collada'];
 
     if (modelExts.includes(ext)) {
